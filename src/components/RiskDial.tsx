@@ -12,7 +12,7 @@ export function RiskDial({ score, kind }: { score: RiskScore; kind: 'ghost' | 's
   const number = useRef<HTMLSpanElement>(null)
   const arc = useRef<SVGCircleElement>(null)
   const circumference = 2 * Math.PI * 84
-  const band = scoreBand(score.value)
+  const band = score.value !== null ? scoreBand(score.value) : 'low'
   const Icon = kind === 'ghost' ? Ghost : ShieldAlert
 
   useEffect(() => {
@@ -30,13 +30,13 @@ export function RiskDial({ score, kind }: { score: RiskScore; kind: 'ghost' | 's
             arc.current.style.strokeDashoffset = String(circumference * (1 - count.value / 100))
         }
         if (context.conditions?.reduced) {
-          count.value = score.value
+          count.value = score.value ?? 0
           update()
           return
         }
         update()
         gsap.to(count, {
-          value: score.value,
+          value: score.value ?? 0,
           duration: 1.5,
           ease: 'power3.out',
           onUpdate: update,
