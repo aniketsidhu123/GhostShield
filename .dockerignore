@@ -1,0 +1,8 @@
+node_modules
+dist
+.git
+.qa
+.env*
+*.tsbuildinfo
+*.log
+Frontend video.mp4
