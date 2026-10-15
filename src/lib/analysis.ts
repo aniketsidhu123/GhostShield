@@ -1,4 +1,5 @@
 import type { JobAnalysis, SavedListing } from '../types/analysis'
+import { liveAnalysisSchema } from './api-schema'
 
 export function normalizeJobUrl(value: string): string {
   const trimmed = value.trim()
@@ -31,7 +32,8 @@ export function normalizeJobUrl(value: string): string {
   return url.toString()
 }
 
-export function scoreBand(value: number): 'low' | 'medium' | 'high' {
+export function scoreBand(value: number | null): 'low' | 'medium' | 'high' {
+  if (value === null) return 'low'
   return value >= 65 ? 'high' : value >= 35 ? 'medium' : 'low'
 }
 
@@ -61,7 +63,8 @@ export function readWatchlist(): SavedListing[] {
         typeof item.savedAt === 'string' &&
         !Number.isNaN(Date.parse(item.savedAt)) &&
         ['ghost', 'scam', 'active'].includes(item.scenario) &&
-        ['demo', 'live'].includes(item.mode),
+        ['demo', 'live'].includes(item.mode) &&
+        (item.mode === 'demo' || liveAnalysisSchema.safeParse(item.report).success),
     )
   } catch {
     return []

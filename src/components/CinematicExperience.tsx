@@ -26,9 +26,11 @@ gsap.registerPlugin(ScrollTrigger)
 interface Props {
   analysis: JobAnalysis
   busy: boolean
+  scanStatus: string
+  scanError: string
   suspended: boolean
   watchlistCount: number
-  onInspect: (url: string) => void
+  onInspect: (url: string, probe: boolean) => void
   onSample: (scenario: Scenario) => void
   onScore: (kind: 'ghost' | 'scam') => void
   onProbe: () => void
@@ -45,6 +47,8 @@ const chapters = [
 export function CinematicExperience({
   analysis,
   busy,
+  scanStatus,
+  scanError,
   suspended,
   watchlistCount,
   onInspect,
@@ -65,6 +69,7 @@ export function CinematicExperience({
   const [manualReduced, setManualReduced] = useState(false)
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
+  const [probe, setProbe] = useState(false)
   const focusRequested = useRef(false)
   const reducedMotion = systemReduced || manualReduced
   const phase = filmPhase(frameTime)
@@ -123,7 +128,7 @@ export function CinematicExperience({
     try {
       const normalized = normalizeJobUrl(url)
       setError('')
-      onInspect(normalized)
+      onInspect(normalized, probe)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Enter a public job listing URL.')
     }
@@ -156,12 +161,12 @@ export function CinematicExperience({
           type="submit"
           className={`film-scan-button ${busy ? 'is-busy' : ''}`}
           disabled={busy}
-          aria-label={busy ? 'Opening sample report' : 'Scan posting'}
+          aria-label={busy ? 'Inspecting posting' : 'Scan posting'}
         >
           <span>
             {busy ? (
               <>
-                <LoaderCircle size={16} className="spin" /> Opening sample
+                <LoaderCircle size={16} className="spin" /> Inspecting…
               </>
             ) : (
               <>
@@ -252,17 +257,17 @@ export function CinematicExperience({
           >
             <h2 className="sr-only">Unmask ghosts and scams. Inspect a job listing.</h2>
             <button
-              className="film-hotspot dial-hotspot ghost"
+              className={`film-hotspot dial-hotspot ghost ${analysis.mode === 'live' && analysis.ghost.value !== null ? 'live-score' : ''}`}
               style={rectStyle(trackedRect(tracking.ghostDial, frameTime))}
               onClick={() => onScore('ghost')}
-              aria-label={`Ghost likelihood: ${analysis.ghost.value} out of 100 in the selected sample. Open signals and explanation.`}
+              aria-label={`Ghost likelihood: ${analysis.ghost.value ?? 'not checked'}${analysis.ghost.value === null ? '' : ' out of 100'}. Open signals and explanation.`}
             >
               <span className="dial-hover-value">
                 <strong>
-                  {analysis.ghost.value}
+                  {analysis.ghost.value ?? '—'}
                   <small>/100</small>
                 </strong>
-                <span>GHOST LIKELIHOOD · SAMPLE</span>
+                <span>GHOST LIKELIHOOD · {analysis.mode === 'demo' ? 'SAMPLE' : 'SIGNALS'}</span>
               </span>
               <span className="hotspot-label">
                 View ghost signals <ArrowRight size={12} />
@@ -277,24 +282,24 @@ export function CinematicExperience({
               {field('film-url')}
             </form>
             <button
-              className="film-hotspot dial-hotspot scam"
+              className={`film-hotspot dial-hotspot scam ${analysis.mode === 'live' && analysis.scam.value !== null ? 'live-score' : ''}`}
               style={rectStyle(trackedRect(tracking.scamDial, frameTime))}
               onClick={() => onScore('scam')}
-              aria-label={`Scam risk: ${analysis.scam.value} out of 100 in the selected sample. Open signals and explanation.`}
+              aria-label={`Scam risk: ${analysis.scam.value ?? 'not checked'}${analysis.scam.value === null ? '' : ' out of 100'}. Open signals and explanation.`}
             >
               <span className="dial-hover-value">
                 <strong>
-                  {analysis.scam.value}
+                  {analysis.scam.value ?? '—'}
                   <small>/100</small>
                 </strong>
-                <span>SCAM RISK · SAMPLE</span>
+                <span>SCAM RISK · {analysis.mode === 'demo' ? 'SAMPLE' : 'SIGNALS'}</span>
               </span>
               <span className="hotspot-label">
                 View scam signals <ArrowRight size={12} />
               </span>
             </button>
             <p className="film-demo-note" id="film-input-description">
-              Interactive demo · entered links are not fetched
+              Live checks via TinyFish · evidence-based signal indices
             </p>
           </div>
         </div>
@@ -312,10 +317,10 @@ export function CinematicExperience({
           </span>
         </button>
         <div className="film-toolbar-actions">
-          <span className="film-demo-chip">INTERACTIVE DEMO</span>
+          <span className="film-demo-chip">TINYFISH CHECKS</span>
           <button
             onClick={onWatchlist}
-            aria-label={`Open watchlist, ${watchlistCount} saved samples`}
+            aria-label={`Open watchlist, ${watchlistCount} saved reports`}
           >
             <Bookmark size={15} />
             <span>Watchlist</span>
@@ -347,13 +352,13 @@ export function CinematicExperience({
             </form>
             <div className="mobile-score-actions">
               <button onClick={() => onScore('ghost')}>
-                <Ghost size={15} /> Ghost likelihood <b>{analysis.ghost.value}</b>
+                <Ghost size={15} /> Ghost likelihood <b>{analysis.ghost.value ?? '—'}</b>
               </button>
               <button onClick={() => onScore('scam')}>
-                <ShieldAlert size={15} /> Scam risk <b>{analysis.scam.value}</b>
+                <ShieldAlert size={15} /> Scam risk <b>{analysis.scam.value ?? '—'}</b>
               </button>
             </div>
-            <span className="mobile-demo-note">Sample data · your link is not fetched</span>
+            <span className="mobile-demo-note">Live checks via TinyFish · sources included</span>
           </>
         ) : phase === 'listings' ? (
           <>
@@ -387,9 +392,29 @@ export function CinematicExperience({
         )}
       </div>
 
-      {error && (
+      {scannerVisible && (
+        <label className="probe-option">
+          <input
+            type="checkbox"
+            checked={probe}
+            disabled={busy}
+            onChange={(event) => setProbe(event.target.checked)}
+          />{' '}
+          Include public apply-flow inspection <span>Never fills or submits forms</span>
+        </label>
+      )}
+      {busy && (
+        <div className="live-scan-status" role="status">
+          <LoaderCircle size={17} className="spin" />
+          <span>
+            {scanStatus}
+            <small>This can take a few minutes. You can keep scrolling.</small>
+          </span>
+        </div>
+      )}
+      {(error || scanError) && (
         <p id="film-input-error" className="film-error" role="alert">
-          {error}
+          {error || scanError}
         </p>
       )}
 
@@ -465,7 +490,7 @@ export function CinematicExperience({
         />
       </footer>
       <p role="status" aria-live="polite" className="sr-only">
-        {busy ? 'Opening a fictional sample report. Your URL has not been fetched.' : ''}
+        {busy ? 'Inspecting the submitted URL with TinyFish.' : ''}
       </p>
     </main>
   )

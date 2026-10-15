@@ -1,23 +1,79 @@
 import { z } from 'zod'
 
-export const ruleCodes = ['listing_present','official_active','explicitly_closed','talent_pool','hiring_paused','upfront_fee','bank_before_offer','whatsapp_only','recruiter_mismatch','posted_date'] as const
+export const ruleCodes = [
+  'listing_present',
+  'official_active',
+  'explicitly_closed',
+  'talent_pool',
+  'hiring_paused',
+  'upfront_fee',
+  'bank_before_offer',
+  'whatsapp_only',
+  'recruiter_mismatch',
+  'posted_date',
+] as const
 export const extractionSchema = z.object({
-  readable:z.boolean(),isJobListing:z.boolean(),
-  titleQuote:z.string().min(1).max(1200),
-  job:z.object({title:z.string().min(1).max(500),employer:z.string().max(500),location:z.string().max(500),employment:z.string().max(200)}),
-  observations:z.array(z.object({code:z.enum(ruleCodes),sourceUrl:z.string().url().max(2048),quote:z.string().min(12).max(1000),date:z.string().nullable()})).max(16),
-  applyFlowInspected:z.boolean(), limitations:z.array(z.string().max(600)).max(10),
+  readable: z.boolean(),
+  isJobListing: z.boolean(),
+  titleQuote: z.string().min(1).max(1200),
+  job: z.object({
+    title: z.string().min(1).max(500),
+    employer: z.string().max(500),
+    location: z.string().max(500),
+    employment: z.string().max(200),
+  }),
+  observations: z
+    .array(
+      z.object({
+        code: z.enum(ruleCodes),
+        sourceUrl: z.string().url().max(2048),
+        quote: z.string().min(12).max(1000),
+        date: z.string().nullable(),
+      }),
+    )
+    .max(16),
+  applyFlowInspected: z.boolean(),
+  limitations: z.array(z.string().max(600)).max(10),
 })
 export type Extraction = z.infer<typeof extractionSchema>
-const string = {type:'string'}
+const string = { type: 'string' }
 export const outputSchema = {
-  type:'object',
-  properties:{
-    readable:{type:'boolean'},isJobListing:{type:'boolean'},titleQuote:string,
-    job:{type:'object',properties:{title:string,employer:string,location:string,employment:string},required:['title','employer','location','employment']},
-    observations:{type:'array',maxItems:16,items:{type:'object',properties:{code:{type:'string',enum:ruleCodes},sourceUrl:string,quote:string,date:{type:'string',nullable:true}},required:['code','sourceUrl','quote','date']}},
-    applyFlowInspected:{type:'boolean'},limitations:{type:'array',items:string,maxItems:10},
-  },required:['readable','isJobListing','titleQuote','job','observations','applyFlowInspected','limitations'],
+  type: 'object',
+  properties: {
+    readable: { type: 'boolean' },
+    isJobListing: { type: 'boolean' },
+    titleQuote: string,
+    job: {
+      type: 'object',
+      properties: { title: string, employer: string, location: string, employment: string },
+      required: ['title', 'employer', 'location', 'employment'],
+    },
+    observations: {
+      type: 'array',
+      maxItems: 16,
+      items: {
+        type: 'object',
+        properties: {
+          code: { type: 'string', enum: ruleCodes },
+          sourceUrl: string,
+          quote: string,
+          date: { type: 'string', nullable: true },
+        },
+        required: ['code', 'sourceUrl', 'quote', 'date'],
+      },
+    },
+    applyFlowInspected: { type: 'boolean' },
+    limitations: { type: 'array', items: string, maxItems: 10 },
+  },
+  required: [
+    'readable',
+    'isJobListing',
+    'titleQuote',
+    'job',
+    'observations',
+    'applyFlowInspected',
+    'limitations',
+  ],
 }
 
 export function extractionGoal(url: string, candidates: string[], probe: boolean) {

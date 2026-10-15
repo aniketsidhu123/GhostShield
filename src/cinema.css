@@ -1,4 +1,105 @@
 /* The source film owns the composition. Only interactive states add visible UI. */
+.probe-option {
+  position: fixed;
+  left: 50%;
+  top: 73%;
+  transform: translateX(-50%);
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border-radius: 5px;
+  background: #07131fe8;
+  color: #bddbe7;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.probe-option input {
+  accent-color: #74e7de;
+  width: 16px;
+  height: 16px;
+}
+.probe-option span {
+  color: #7f9aa9;
+  font-size: 10px;
+}
+.live-scan-status {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  bottom: 125px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: calc(100% - 40px);
+  padding: 16px 22px;
+  color: #b9f2ef;
+  background: #0d2535f5;
+  border: 1px solid #5be4de55;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.live-scan-status small {
+  display: block;
+  margin-top: 6px;
+  color: #91aebe;
+  font-size: 11px;
+}
+.evidence-quote {
+  margin: 14px 0;
+  border-left: 2px solid #78d5e5;
+  padding: 8px 15px;
+  color: #c5dce9;
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.analysis-limitations,
+.analysis-sources {
+  padding-left: 20px;
+  color: #a9bfce;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.analysis-limitations li,
+.analysis-sources li {
+  margin: 10px 0;
+}
+.analysis-sources a {
+  color: #91e9e1;
+  overflow-wrap: anywhere;
+}
+.analysis-sources small {
+  display: block;
+  color: #7d98aa;
+}
+@media (max-aspect-ratio: 1/1) {
+  .probe-option {
+    top: auto;
+    bottom: 170px;
+    width: calc(100% - 48px);
+    white-space: normal;
+    font-size: 10px;
+  }
+  .probe-option span {
+    display: none;
+  }
+  .live-scan-status {
+    bottom: 120px;
+    font-size: 11px;
+  }
+}
+@media (max-aspect-ratio: 1/1) and (max-height: 740px) {
+  .probe-option {
+    bottom: 100px;
+  }
+  .live-scan-status {
+    bottom: 150px;
+  }
+}
 :root {
   --void-bg: 3 10 18;
   --verified-glow: 101 237 236;
@@ -190,7 +291,7 @@ body {
     visibility 0.18s;
   color: var(--hotspot-color);
 }
-.dial-hotspot:is(:hover, :focus-visible) .dial-hover-value {
+.dial-hotspot:is(:hover, :focus-visible, .live-score) .dial-hover-value {
   opacity: 1;
   visibility: visible;
 }
@@ -575,7 +676,8 @@ body {
   line-height: 1.7;
 }
 .film-error {
-  bottom: 140px;
+  top: 78px;
+  bottom: auto;
   color: #ffc2a6;
   border-color: #f09b7055;
   background: #221a1be8;
@@ -1035,7 +1137,8 @@ body {
     width: 13px;
   }
   .film-error {
-    bottom: 126px;
+    top: 76px;
+    bottom: auto;
     font-size: 10px;
     padding: 10px 13px;
     width: max-content;
@@ -1087,7 +1190,8 @@ body {
     padding-top: 12px;
   }
   .film-error {
-    bottom: 95px;
+    top: 65px;
+    bottom: auto;
   }
 }
 @media (max-height: 500px) and (min-aspect-ratio: 1/1) {

@@ -4,20 +4,37 @@ An interactive React experience built around the supplied `Frontend video.mp4`. 
 
 ## Run locally
 
-Requires Node.js 22.12+.
+Requires Node.js 22.12+ (Node 24 recommended). The frontend and API run in separate terminals during development.
 
 ```sh
 npm ci
+Copy-Item .env.example .env        # skip if .env already exists
+```
+
+Edit `.env` and set `TINYFISH_API_KEY` to your TinyFish key. If you already have a `.env`, edit it instead of copying over it.
+
+> [!CAUTION]
+> **Never commit your `.env` file or any real API keys to Git.**
+> The `.gitignore` already excludes `.env` and all `.env.*` variants (except `.env.example`). The key is read server-side only — never use a `VITE_` prefix, which would expose it to the browser bundle. If you suspect a key was committed by mistake, rotate it immediately on the TinyFish dashboard.
+
+```sh
+# Terminal 1: API, port 3001
+npm run dev:api
+# Terminal 2: frontend, port 5173
 npm run dev
 ```
+
+Open http://127.0.0.1:5173, choose **Skip to scanner**, and paste a public job URL. Restart the API after changing the key. With no key, the app returns an explicit setup message instead of sample scores. The optional checkbox includes public application steps; the agent is instructed never to fill or submit forms. TinyFish Agent runs use account credits.
 
 For a production build:
 
 ```sh
 npm test
 npm run build
-npm run preview
+npm start
 ```
+
+`npm start` serves both the built frontend and API at http://127.0.0.1:3001. `npm run preview` is also available at port 4173 when the API is running separately.
 
 ## The film is the interface
 
@@ -35,16 +52,18 @@ The source contains rendered words and interface artwork. Those pixels are prese
 ## Working frontend features
 
 - Three fictional scenarios with independent ghost and scam indices, animated score dials, and expandable signal timelines.
-- Local URL validation and normalization, inline errors, loading feedback, and sample reports.
+- Live TinyFish checks with progress, independently scored categories, source excerpts, timestamps, coverage, and failure states.
 - A browser-local watchlist with persistence, removal, storage-error handling, and cross-tab synchronization.
 - Native modal dialogs with Escape dismissal, focus return, and scrollable contents.
 - Local fonts and media, Tailwind color tokens, Lucide icons, and no analytics.
 
-## Demo scope
+## Live analysis and sample scope
 
-**Live analysis is not connected.** Entered links are validated locally and displayed as **not fetched**. They do not determine sample scores and are not stored. The app clearly labels fictional results at the point of use.
+Pasted URLs now go to the local API and TinyFish. Fetch reads the listing, Search finds candidate careers pages, and Agent extracts structured observations. The server fetches cited pages again and checks the quoted text before adding rule-based risk points. Unverifiable observations are excluded. Failed inspections never fall back to fixtures.
 
-The watchlist stores sample metadata under `ghostjob-shield:watchlist:v1`; it does not monitor postings or send alerts. TinyFish searches, apply-flow probes, captured evidence, a public employer index, and the extension are future backend integrations. The sample fixtures are not a labelled research dataset. See `docs/backend-contract.md` for the API and cache-first architecture handoff.
+Reports are cached for one hour in `.data`; one snapshot hash per URL per UTC day starts a real history. No synthetic repost history is used for live checks. A first scan cannot establish reposting. Scores are uncalibrated signal indices, not measured probabilities or proof of intent/fraud. Missing coverage is disclosed, and a closed listing is not automatically penalized as a ghost.
+
+The floating cards still open explicitly fictional examples. The local watchlist saves complete live reports or demo metadata under `ghostjob-shield:watchlist:v1`. It does not monitor postings or send alerts. Screenshots, an employer index, the extension, and a calibrated research dataset remain outside this implementation. See [backend setup and contract](docs/backend-contract.md) for provider APIs, scoring rules, operational limits, and deployment details.
 
 ## Source map
 
@@ -89,12 +108,13 @@ The original `Frontend video.mp4` is preserved. Run `npm run prepare:video` to r
 - Browser QA checked actual film rendering, card reports, the cube explanation, scanner focus, empty-input validation, valid URL submission, evidence expansion, Escape dismissal, and watchlist persistence/removal.
 - Responsive QA checked 390×844 portrait rendering, the larger native scanner, report layout, and horizontal overflow. Keyboard timeline rewind and still-scene selection were exercised. Browser console checks were clean.
 - Physical iOS/Safari testing, slower-device performance, and network/media failure simulation remain release checks.
+- Backend integration tests use simulated provider responses to verify the real API, pipeline, source validation, cache, and errors. No authenticated TinyFish smoke test was performed because the API key will be added later.
 
-## Optional static Cloud Run container
+## Optional Node container
 
 ```sh
 docker build -t ghostjob-shield .
-docker run --rm -p 8080:8080 ghostjob-shield
+docker run --rm -p 8080:8080 --env-file .env -e HOST=0.0.0.0 -e PORT=8080 -e PUBLIC_ORIGIN=http://localhost:8080 ghostjob-shield
 ```
 
-The container serves the frontend with nginx on port 8080, including MP4 byte ranges. It is a deployment scaffold, not a deployed service or live analysis backend.
+The container serves the frontend and API with Node on port 8080, including MP4 byte ranges. Credentials are injected at runtime, not copied into the image. Cloud Run needs a persistent cache/database and durable worker queue before scaling beyond one instance; current in-memory jobs and limits are process-local. No service has been deployed.

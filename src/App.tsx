@@ -23,8 +23,10 @@ import { RiskDial } from './components/RiskDial'
 import { SignalTimeline } from './components/SignalTimeline'
 import { Modal } from './components/Modal'
 import { mockAnalyses } from './data/mockAnalysis'
+import { emptyAnalysis } from './data/emptyAnalysis'
+import { inspectJob } from './lib/api'
 import { readWatchlist, writeWatchlist } from './lib/analysis'
-import type { SavedListing, Scenario } from './types/analysis'
+import type { JobAnalysis, SavedListing, Scenario } from './types/analysis'
 
 type Dialog =
   'report' | 'watchlist' | 'methodology' | 'privacy' | 'evidence' | 'probe' | 'help' | null
@@ -35,15 +37,19 @@ function App() {
   const [scoreKind, setScoreKind] = useState<'ghost' | 'scam'>('ghost')
   const [busy, setBusy] = useState(false)
   const [requestedUrl, setRequestedUrl] = useState<string | null>(null)
+  const [report, setReport] = useState<JobAnalysis | null>(null)
+  const [scanStatus, setScanStatus] = useState('')
+  const [scanError, setScanError] = useState('')
   const [watchlist, setWatchlist] = useState<SavedListing[]>(readWatchlist)
   const [toast, setToast] = useState('')
-  const inspectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const analysis = mockAnalyses[scenario]
+  const requestController = useRef<AbortController | null>(null)
+  const analysis = report ?? emptyAnalysis
+  const isLive = analysis.mode === 'live'
   const saved = watchlist.some((item) => item.id === analysis.id)
 
   useEffect(
     () => () => {
-      if (inspectTimer.current) clearTimeout(inspectTimer.current)
+      requestController.current?.abort()
     },
     [],
   )
@@ -59,14 +65,31 @@ function App() {
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
   }, [])
-  function inspect(url: string) {
+  async function inspect(url: string, probe = false) {
     if (busy) return
     setRequestedUrl(url)
     setBusy(true)
-    inspectTimer.current = setTimeout(() => {
-      setBusy(false)
+    setDialog(null)
+    setReport(null)
+    setScanError('')
+    setScanStatus('Starting live inspection…')
+    const controller = new AbortController()
+    requestController.current = controller
+    try {
+      const result = await inspectJob(url, probe, setScanStatus, controller.signal)
+      if (controller.signal.aborted) return
+      setReport(result)
+      setScenario(result.scenario)
       setDialog('report')
-    }, 850)
+    } catch (error) {
+      if (!controller.signal.aborted)
+        setScanError(error instanceof Error ? error.message : 'The check failed. Try again.')
+    } finally {
+      if (!controller.signal.aborted) {
+        setBusy(false)
+        setScanStatus('')
+      }
+    }
   }
 
   function toggleSave() {
@@ -76,11 +99,12 @@ function App() {
           ...watchlist,
           {
             id: analysis.id,
-            scenario,
+            scenario: analysis.scenario,
             title: analysis.job.title,
             employer: analysis.job.employer,
             savedAt: new Date().toISOString(),
             mode: analysis.mode,
+            ...(isLive ? { report: analysis } : {}),
           },
         ]
     setWatchlist(next)
@@ -88,8 +112,8 @@ function App() {
     setToast(
       stored
         ? saved
-          ? 'Sample removed from your watchlist.'
-          : 'Sample saved to this browser’s watchlist.'
+          ? 'Report removed from your watchlist.'
+          : 'Report saved to this browser’s watchlist.'
         : 'Browser storage is unavailable. Saved for this session only.',
     )
   }
@@ -106,6 +130,7 @@ function App() {
 
   function goToSample() {
     setRequestedUrl(null)
+    setReport(mockAnalyses[scenario])
     setDialog('report')
   }
 
@@ -115,15 +140,24 @@ function App() {
         <CinematicExperience
           analysis={analysis}
           busy={busy}
+          scanStatus={scanStatus}
+          scanError={scanError}
           suspended={dialog !== null}
           watchlistCount={watchlist.length}
           onInspect={inspect}
           onSample={(next) => {
+            if (busy) return
+            setScanError('')
             setScenario(next)
+            setReport(mockAnalyses[next])
             setRequestedUrl(null)
             setDialog('report')
           }}
           onScore={(kind) => {
+            if (!report) {
+              setToast('Paste a public job link to inspect these signals.')
+              return
+            }
             setScoreKind(kind)
             setDialog('evidence')
           }}
@@ -145,41 +179,52 @@ function App() {
             <div className="report-banner">
               <Sparkles size={18} />
               <div>
-                <strong>Sample report — no live scan performed</strong>
+                <strong>
+                  {isLive
+                    ? `TinyFish evidence check${analysis.cached ? ' · cached within the last hour' : ''}`
+                    : 'Sample report — no live scan performed'}
+                </strong>
                 <p>
-                  {requestedUrl
-                    ? 'Your link was validated locally. The findings below belong to a fictional sample, not the URL you entered.'
+                  {isLive
+                    ? `Checked ${new Date(analysis.checkedAt).toLocaleString('en-IN')}. Scores reflect the cited observations and coverage below.`
                     : 'Explore a fictional listing to see how separate ghost and scam signals work.'}
                 </p>
               </div>
             </div>
             {requestedUrl && (
               <div className="requested-url">
-                <span>YOUR LINK · NOT FETCHED</span>
+                <span>{isLive ? 'ANALYZED LISTING' : 'SAMPLE LINK'}</span>
                 <p>{requestedUrl}</p>
               </div>
             )}
-            <div className="sample-tabs" role="group" aria-label="Choose sample scenario">
-              {(
-                [
-                  { id: 'ghost', label: 'Ghost signals', icon: Ghost },
-                  { id: 'scam', label: 'Scam signals', icon: ShieldAlert },
-                  { id: 'active', label: 'Active role', icon: ShieldCheck },
-                ] as const
-              ).map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  aria-pressed={scenario === id}
-                  className={scenario === id ? 'selected' : ''}
-                  onClick={() => setScenario(id)}
-                >
-                  <Icon size={13} />
-                  {label}
-                </button>
-              ))}
-            </div>
+            {!isLive && (
+              <div className="sample-tabs" role="group" aria-label="Choose sample scenario">
+                {(
+                  [
+                    { id: 'ghost', label: 'Ghost signals', icon: Ghost },
+                    { id: 'scam', label: 'Scam signals', icon: ShieldAlert },
+                    { id: 'active', label: 'Active role', icon: ShieldCheck },
+                  ] as const
+                ).map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    aria-pressed={scenario === id}
+                    className={scenario === id ? 'selected' : ''}
+                    onClick={() => {
+                      setScenario(id)
+                      setReport(mockAnalyses[id])
+                    }}
+                  >
+                    <Icon size={13} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="report-job">
-              <span className="eyebrow">FICTIONAL SAMPLE</span>
+              <span className="eyebrow">
+                {isLive ? 'LIVE SOURCE OBSERVATIONS' : 'FICTIONAL SAMPLE'}
+              </span>
               <h3>{analysis.job.title}</h3>
               <p>
                 {analysis.job.employer} · {analysis.job.location}
@@ -198,20 +243,49 @@ function App() {
             </div>
             <div className="report-coverage">
               <span>
-                <Check size={13} /> Careers-page sample
+                {analysis.coverage.careerPage ? <Check size={13} /> : <X size={13} />}{' '}
+                {isLive ? 'Careers-page match' : 'Careers-page sample'}
               </span>
               <span>
-                <Check size={13} /> Seeded history
+                {analysis.coverage.history ? <Check size={13} /> : <X size={13} />}{' '}
+                {isLive ? 'Multiple snapshot dates' : 'Seeded history'}
               </span>
               <span>
-                <X size={13} /> Apply flow not inspected
+                {analysis.coverage.applyFlow ? <Check size={13} /> : <X size={13} />} Apply flow{' '}
+                {analysis.coverage.applyFlow ? 'inspected' : 'not inspected'}
               </span>
             </div>
             <p className="modal-fineprint">
-              Sample scores are transparent signal indices, not calibrated probabilities. Live
-              fetches, isolated browsing, screenshots, and automated alerts require the backend
-              described in the project documentation.
+              Scores are transparent signal indices, not calibrated probabilities. Low scores do not
+              establish safety or hiring intent. Review the evidence and missing coverage.
             </p>
+            <h3 className="modal-subheading">Signals observed</h3>
+            <SignalTimeline key={analysis.id} analysis={analysis} />
+            {isLive && (
+              <>
+                <h3 className="modal-subheading">Coverage and limitations</h3>
+                <ul className="analysis-limitations">
+                  {analysis.limitations?.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+                <h3 className="modal-subheading">Sources fetched</h3>
+                <ul className="analysis-sources">
+                  {analysis.sources?.map((source) => (
+                    <li key={source.url}>
+                      <a href={source.url} target="_blank" rel="noopener noreferrer">
+                        {source.title} <ArrowUpRight size={12} />
+                      </a>
+                      <small>{new Date(source.fetchedAt).toLocaleString('en-IN')}</small>
+                    </li>
+                  ))}
+                </ul>
+                <p className="modal-fineprint">
+                  {analysis.history?.length ?? 0} dated snapshot(s) saved ·{' '}
+                  {analysis.scoringVersion}. Screenshots are not captured by this integration.
+                </p>
+              </>
+            )}
             {toast && (
               <p className="dialog-status" role="status">
                 {toast}
@@ -220,7 +294,7 @@ function App() {
             <div className="modal-actions">
               <button className="button button-mint" onClick={toggleSave}>
                 <Bookmark size={16} />
-                {saved ? 'Remove saved sample' : 'Save sample to watchlist'}
+                {saved ? 'Remove saved report' : 'Save report to watchlist'}
               </button>
               <button className="button button-outline" onClick={() => setDialog('methodology')}>
                 How scoring works <ArrowUpRight size={14} />
@@ -232,7 +306,8 @@ function App() {
         {dialog === 'watchlist' && (
           <Modal title="Keep an eye on it." onClose={() => setDialog(null)}>
             <p className="modal-intro">
-              Your saved samples, in one place. Stored only in this browser.
+              Saved reports and sample scenarios, stored only in this browser. Live reports retain
+              their original check time.
             </p>
             {watchlist.length === 0 ? (
               <div className="empty-watchlist">
@@ -240,7 +315,7 @@ function App() {
                   <Bookmark size={31} strokeWidth={1.2} />
                 </span>
                 <h3>No ghosts on your radar. Yet.</h3>
-                <p>Save a sample report to try the watchlist.</p>
+                <p>Save an analysis report to revisit its evidence.</p>
                 <button className="button button-mint" onClick={goToSample}>
                   Explore a sample <ArrowUpRight size={16} />
                 </button>
@@ -255,12 +330,16 @@ function App() {
                     <button
                       onClick={() => {
                         setScenario(item.scenario)
-                        setRequestedUrl(null)
+                        setReport(item.mode === 'live' ? item.report! : mockAnalyses[item.scenario])
+                        setRequestedUrl(item.report?.requestedUrl ?? null)
                         setDialog('report')
                       }}
                     >
                       <strong>{item.title}</strong>
-                      <span>{item.employer} · Sample data</span>
+                      <span>
+                        {item.employer} ·{' '}
+                        {item.mode === 'live' ? 'Saved live check' : 'Sample data'}
+                      </span>
                     </button>
                     <button
                       className="icon-button"
@@ -276,8 +355,8 @@ function App() {
             <div className="watchlist-note">
               <Clock3 size={17} />
               <p>
-                Automatic rechecks and disappearance alerts are planned. This local demo saves
-                samples; it doesn’t monitor postings.
+                Automatic rechecks and disappearance alerts are not enabled. Paste the URL again for
+                a new check after the one-hour cache expires.
               </p>
             </div>
           </Modal>
@@ -307,7 +386,7 @@ function App() {
                 65–100 <strong>Strong signals</strong>
               </span>
             </div>
-            <h3 className="modal-subheading">Current sample: {analysis.job.title}</h3>
+            <h3 className="modal-subheading">Current report: {analysis.job.title}</h3>
             <div className="weight-table">
               {analysis.signals
                 .filter((s) => s.weight > 0)
@@ -324,9 +403,10 @@ function App() {
             <div className="method-note">
               <CircleHelp size={19} />
               <p>
-                These example weights are illustrative and have not been validated on a labelled
-                dataset. Scores do not establish intent or fraud. Confidence describes sample
-                coverage and is separate from the score.
+                These weights have not been calibrated against a labelled dataset. Live observations
+                are classified by TinyFish and their quotes checked against fetched text. Scores do
+                not establish intent or fraud. Confidence describes coverage separately from the
+                score.
               </p>
             </div>
             <h3 className="modal-subheading">What a live check needs</h3>
@@ -348,19 +428,20 @@ function App() {
               </div>
               <div>
                 <Globe2 size={22} />
-                <h3>Your URL stays in this session</h3>
+                <h3>Your URL is sent to TinyFish</h3>
                 <p>
-                  Links are validated in your browser and are not fetched or sent to an analysis
-                  service. They are not stored in the watchlist.
+                  Scanning sends the public URL to our API and TinyFish for reading and inspection.
+                  The server caches reports and dated content hashes. Avoid links containing private
+                  access tokens or personal information.
                 </p>
               </div>
               <div>
                 <Bookmark size={22} />
                 <h3>Local watchlist only</h3>
                 <p>
-                  Saved sample titles, IDs, and save dates are stored in this browser’s local
-                  storage. Remove individual items in the watchlist or clear site data to delete
-                  them.
+                  Saved reports, source URLs, evidence excerpts and save dates are stored in this
+                  browser. Remove individual items in the watchlist or clear site data to remove
+                  these local copies.
                 </p>
               </div>
               <div>
@@ -383,8 +464,11 @@ function App() {
             onClose={() => setDialog(null)}
           >
             <p className="modal-intro">
-              Fictional sample: {analysis.job.title} at {analysis.job.employer}. These signals
-              belong to the selected demo, not a live listing.
+              {isLive ? 'Live source observations' : 'Fictional sample'}: {analysis.job.title} at{' '}
+              {analysis.job.employer}.{' '}
+              {isLive
+                ? 'Review the supporting sources and check time.'
+                : 'These signals belong to a demo.'}
             </p>
             <div className="evidence-dialog-dial">
               <RiskDial kind={scoreKind} score={analysis[scoreKind]} />
@@ -399,7 +483,7 @@ function App() {
             />
             <div className="modal-actions">
               <button className="button button-mint" onClick={() => setDialog('report')}>
-                Open full sample report <ArrowUpRight size={14} />
+                Open full report <ArrowUpRight size={14} />
               </button>
               <button className="button button-outline" onClick={() => setDialog('methodology')}>
                 How scoring works
@@ -410,8 +494,9 @@ function App() {
         {dialog === 'probe' && (
           <Modal title="Look inside the listing." onClose={() => setDialog(null)}>
             <p className="modal-intro">
-              The cube represents the inspection process. This preview explains the checks; it
-              doesn't run a live browser probe.
+              TinyFish reads the posting and supporting sources. The server checks quoted evidence
+              and calculates separate signal indices. You can include a public apply-flow inspection
+              when starting a scan.
             </p>
             <div className="pipeline-steps">
               <article>
@@ -438,8 +523,9 @@ function App() {
                   <span>03 / INSPECT THE APPLY FLOW</span>
                   <h3>What happens after you click apply?</h3>
                   <p>
-                    Planned: an isolated, on-demand check for fees, contact mismatches, and
-                    suspicious redirects. It stops before submission.
+                    Optional: TinyFish inspects public application steps for fees and data requests.
+                    It never fills forms or submits an application. Login walls and unverifiable
+                    steps are reported as limitations.
                   </p>
                 </div>
               </article>
@@ -480,10 +566,11 @@ function App() {
               </div>
               <div>
                 <CircleHelp size={22} />
-                <h3>Sample evidence, clearly labelled</h3>
+                <h3>Live checks and clearly labelled samples</h3>
                 <p>
-                  No submitted link is fetched in this frontend demo. Scores describe fictional
-                  signals; the live analysis backend has not been connected.
+                  Pasted URLs start TinyFish checks and may use provider credits. Floating cards
+                  still open fictional examples. Live scores use quoted source evidence; missing
+                  coverage is disclosed. A server API key is required.
                 </p>
               </div>
             </div>

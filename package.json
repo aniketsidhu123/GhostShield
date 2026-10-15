@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:api": "node --env-file-if-exists=.env --import tsx server/index.ts",
+    "start": "node --env-file-if-exists=.env --import tsx server/index.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --import tsx --test src/lib/analysis.test.ts src/lib/cinema.test.ts",
+    "test": "node --import tsx --test src/lib/analysis.test.ts src/lib/cinema.test.ts server/*.test.ts",
     "prepare:video": "node scripts/prepare-video.mjs",
     "format": "prettier --write src index.html vite.config.ts tailwind.config.js"
   },

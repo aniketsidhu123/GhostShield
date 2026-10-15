@@ -2,6 +2,7 @@ node_modules
 dist
 .git
 .qa
+.data
 .env*
 *.tsbuildinfo
 *.log

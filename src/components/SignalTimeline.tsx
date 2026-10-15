@@ -25,7 +25,11 @@ export function SignalTimeline({ analysis }: JobAnalysisProps) {
             >
               <span>
                 <span className="signal-date">
-                  {new Date(`${signal.observedAt}T12:00:00`).toLocaleDateString('en-IN', {
+                  {new Date(
+                    signal.observedAt.includes('T')
+                      ? signal.observedAt
+                      : `${signal.observedAt}T12:00:00`,
+                  ).toLocaleDateString('en-IN', {
                     day: '2-digit',
                     month: 'short',
                   })}{' '}
@@ -38,6 +42,7 @@ export function SignalTimeline({ analysis }: JobAnalysisProps) {
             </button>
             <div id={`signal-${signal.id}`} hidden={!open} className="signal-details">
               <p>{signal.description}</p>
+              {signal.quote && <blockquote className="evidence-quote">“{signal.quote}”</blockquote>}
               <div className="signal-weight">
                 {signal.weight > 0
                   ? `+${signal.weight} ${signal.kind} signal points`

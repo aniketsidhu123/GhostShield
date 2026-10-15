@@ -1,10 +1,15 @@
 node_modules/
 dist/
+
+# Secrets – never commit real credentials
 .env
+.env.local
+.env.production
 .env.*
 !.env.example
 *.tsbuildinfo
 .qa/
+.data/
 *.log
 venv/
 .venv/

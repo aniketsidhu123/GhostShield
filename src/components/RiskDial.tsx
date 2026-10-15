@@ -16,6 +16,11 @@ export function RiskDial({ score, kind }: { score: RiskScore; kind: 'ghost' | 's
   const Icon = kind === 'ghost' ? Ghost : ShieldAlert
 
   useEffect(() => {
+    if (score.value === null) {
+      if (number.current) number.current.textContent = '—'
+      if (arc.current) arc.current.style.strokeDashoffset = String(circumference)
+      return
+    }
     const media = gsap.matchMedia()
     media.add(
       {
@@ -57,7 +62,7 @@ export function RiskDial({ score, kind }: { score: RiskScore; kind: 'ghost' | 's
       <div
         className="dial-visual"
         role="img"
-        aria-label={`${kind === 'ghost' ? 'Ghost likelihood' : 'Scam risk'}: ${score.value} out of 100. ${score.label}. ${score.confidence} confidence.`}
+        aria-label={`${kind === 'ghost' ? 'Ghost likelihood' : 'Scam risk'}: ${score.value === null ? 'Not checked' : `${score.value} out of 100`}. ${score.label}. ${score.confidence} confidence.`}
       >
         <svg viewBox="0 0 210 210" aria-hidden="true">
           <circle className="dial-outer" cx="105" cy="105" r="100" />
