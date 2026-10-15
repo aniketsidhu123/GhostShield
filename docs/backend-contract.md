@@ -6,13 +6,13 @@ Install with `npm ci`. Copy `.env.example` to `.env` if it does not exist, add `
 
 For a built app, run `npm run build` followed by `npm start`; Node serves the frontend, byte-range video, and API on port 3001. `PORT`, `HOST`, `PUBLIC_ORIGIN`, `DATA_DIR` and `TINYFISH_RUNS_PER_HOUR` are configurable. The Vite development proxy targets port 3001; update `vite.config.ts` if changing that port during development.
 
-TinyFish Fetch and Search have account-dependent allowances; Agent uses wallet credits. Check the current dashboard rather than assuming the original project brief's free-tier limits. One uncached scan starts one Agent run, with or without the optional deeper apply-flow inspection. No other LLM provider or key is required.
+The active scan uses **TinyFish Fetch**. One uncached scan fetches one public job page and applies local English text rules. It starts no Agent run and requires no other LLM key. Fetch allowances are account-dependent; check the current TinyFish dashboard. Search and Agent client code is retained but not called by the production scan pipeline.
 
 ## Provider contract
 
 Implemented against the official references:
 
-- [Fetch](https://docs.tinyfish.ai/fetch-api/reference): `POST https://api.fetch.tinyfish.ai`, `{urls, format:"markdown", links:true, ttl:0, per_url_timeout_ms:45000}`. Both HTTP failures and per-URL failures in a successful HTTP response are handled.
+- [Fetch](https://docs.tinyfish.ai/fetch-api/reference): `POST https://api.fetch.tinyfish.ai`, `{urls, format:"markdown", links:true, ttl:0, per_url_timeout_ms:45000, purpose}`. The purpose explicitly describes the job-risk page-text report. HTTP failures, per-URL failures, application-error pages and non-job content are handled without inventing scores.
 - [Search](https://docs.tinyfish.ai/search-api/reference): `GET https://api.search.tinyfish.ai?query=...&location=IN&language=en`. Results are candidate URLs only; snippets do not become scoring evidence.
 - [Agent](https://docs.tinyfish.ai/agent-api/reference): `POST https://agent.tinyfish.ai/v1/automation/run-async`, with a natural-language read-only goal, a supported `output_schema`, `browser_profile:"lite"`, and a 180-second provider duration limit. No profile or vault credentials are enabled. Beta-gated max_steps, strict mode and capture settings are intentionally omitted.
 - [Runs](https://docs.tinyfish.ai/key-concepts/runs): poll `GET /v1/runs/:id`; validate the completed result, not just the COMPLETED status. An interrupted/timed-out run is cancelled with `POST /v1/runs/:id/cancel` when its ID is known. Run creation is not automatically retried because an ambiguous timeout may already have started billable work.
@@ -29,13 +29,15 @@ All provider calls use a server-side `X-API-Key` header. Provider response bodie
 
 The frontend polls every two seconds. Failures show actionable messages for missing configuration, authentication, exhausted credits, rate limits, blocked/login-only sources, malformed results and timeouts. No fixture fallback exists in the live request path. Scores remain unassessed when no readable specific posting can be established.
 
-The optional `probe` flag is chosen by the scanner checkbox. It permits public Apply-link navigation, but the agent is instructed not to enter data, submit, log in, pay, consent to agreements, message anyone or bypass a CAPTCHA. This is a provider goal constraint, not a locally enforced browser action policy. The agent runs in TinyFish infrastructure; external navigation and redirect isolation depend on the provider. Only independently refetchable quotes become scoring evidence. Screenshots and recordings are not exposed in this version.
+The scanner now labels its scope as a TinyFish Fetch page-text check. The old `probe` flag is accepted for API compatibility, but never starts an Agent run; if true, the report explicitly states that application-flow inspection is unavailable. `coverage.applyFlow` is false. No form is filled or submitted. Screenshots and recordings are not exposed by the scan. `analysisMethod` is `fetch-rules`; `providerRunId` is absent.
 
 ## Evidence and scoring
 
-`src/lib/api-schema.ts` validates completed API payloads before rendering or loading saved live reports. `server/extraction.ts` validates agent output. `server/scoring.ts` assigns fixed weights; the agent cannot supply its own numerical scores.
+`src/lib/api-schema.ts` validates completed payloads before rendering or loading saved reports. `server/page-analysis.ts` requires a specific posting URL, an identifiable title and job-description content, then extracts exact paragraphs using conservative English patterns. `server/scoring.ts` assigns fixed weights. No model supplies numerical scores.
 
-A result requires a specific readable job and a title excerpt that matches the fetched posting. Supporting evidence URLs are validated and fetched independently (maximum four supporting pages). Each observation's quote must be present in fetched text after whitespace/Markdown normalization. Unvisited URLs, invented quotes and unsupported observations are excluded with a limitation. Semantic classification is still model-assisted and can be wrong; matching a quotation verifies the text, not the interpretation.
+A result requires a specific readable job and a title excerpt that matches the fetched posting. Each observation's quote must be present in the same fetched text after whitespace/Markdown normalization. The source URL and fetch timestamp accompany it. Text matching verifies the excerpt, not the interpretation. Patterns can miss paraphrases, non-English text, image content, or hidden requests. Common role URLs on employer sites and ATS hosts, plus Naukri job-listings URLs, are recognized when their actual content is readable; job indexes and site error pages are rejected.
+
+The active Fetch extractor implements explicit future-opening language, hiring pauses for this role, pre-interview payment requests, pre-offer bank requests, WhatsApp-only applications, ISO original posting dates and explicitly closed roles. It does not infer recruiter-domain mismatches or independently establish an official employer match. Readable role details, Apply headings and no-payment notices are context signals worth zero points. The weights below also document legacy Agent categories, but only observed supported rules contribute.
 
 | Observed signal | Category | Points |
 | --- | --- | ---: |
@@ -74,4 +76,15 @@ Same-origin/session checks are not user authentication. Before exposing the serv
 
 `npm run build` checks frontend and server TypeScript. Browser QA confirmed the real frontend POST reaches the API and shows the key-configuration error while both scores remain unassessed.
 
-An authenticated browser smoke test on 2026-10-15 submitted Deliveroo's Staff Software Engineer listing (`https://job-boards.greenhouse.io/deliveroo/jobs/8202442`) with public apply-flow inspection enabled. Fetch read the posting, but TinyFish Agent run `0ba3b6ff-40e7-4e7b-b001-0d90444ab3a1` failed with `AGENT_FAILURE` and a usage-policy rejection before any browser steps (0 steps). No live report or scores were produced. This is not a successful end-to-end scoring verification; that remains pending provider resolution. Terminal policy/billing failures now have specific sanitized messages and regression coverage. Policy rejections are not automatically retried.
+On 2026-10-15 the original Agent runs `0ba3b6ff-40e7-4e7b-b001-0d90444ab3a1` and `b7b42b36-d079-4e02-93d8-6702dccc536a` returned `AGENT_FAILURE`, a usage-policy rejection, and zero browser steps. The provider did not identify an exact triggering phrase or URL. Its [error reference](https://docs.tinyfish.ai/error-codes) documents content-policy rejections separately from authentication, billing and site blocking. No claim is made that prompt wording or a particular employer caused this rejection. The blocked Agent workflow is not retried or disguised; the active feature is a narrower, transparent Fetch page-text report.
+
+Successful authenticated browser scans after this change:
+
+| Public posting | Ghost | Scam | Evidence |
+| --- | ---: | ---: | --- |
+| [Deliveroo Staff Software Engineer](https://job-boards.greenhouse.io/deliveroo/jobs/8202442) | 0 | 0 | Four quoted context signals, including a no-payment notice; no weighted risk signals observed. |
+| [Isar Aerospace Controls & Automation Engineer](https://job-boards.greenhouse.io/isaraerospace/jobs/4587242101) | 20 | 0 | Explicit text that recruitment is not active and the listing builds a talent pool; +20 ghost points. |
+
+`npm run test:live` verifies API completion, numeric totals, source links, all excerpts against independently re-fetched TinyFish page text, and cache persistence. Both reports and all eight excerpts passed on 2026-10-15. The initial browser requests were uncached; later audit requests reused those reports and fetched fresh source content for verification. `.qa/live-smoke-results.json` records check and verification times. This is integration verification, not precision/recall or probability calibration.
+
+The user-supplied Naukri posting ending `200520500046` returned only “Application error: a client-side exception has occurred” through TinyFish Fetch. That is not a readable job description. It receives a specific `SOURCE_PAGE_ERROR` and no scores; use a public employer link if that site remains unavailable.

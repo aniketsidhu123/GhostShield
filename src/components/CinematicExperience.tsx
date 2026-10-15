@@ -69,7 +69,6 @@ export function CinematicExperience({
   const [manualReduced, setManualReduced] = useState(false)
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
-  const [probe, setProbe] = useState(false)
   const focusRequested = useRef(false)
   const reducedMotion = systemReduced || manualReduced
   const phase = filmPhase(frameTime)
@@ -128,7 +127,7 @@ export function CinematicExperience({
     try {
       const normalized = normalizeJobUrl(url)
       setError('')
-      onInspect(normalized, probe)
+      onInspect(normalized, false)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Enter a public job listing URL.')
     }
@@ -393,15 +392,10 @@ export function CinematicExperience({
       </div>
 
       {scannerVisible && (
-        <label className="probe-option">
-          <input
-            type="checkbox"
-            checked={probe}
-            disabled={busy}
-            onChange={(event) => setProbe(event.target.checked)}
-          />{' '}
-          Include public apply-flow inspection <span>Never fills or submits forms</span>
-        </label>
+        <p className="probe-option">
+          Naukri · LinkedIn · Indeed · ATS{' '}
+          <span>Paste one selected job · access varies by site</span>
+        </p>
       )}
       {busy && (
         <div className="live-scan-status" role="status">

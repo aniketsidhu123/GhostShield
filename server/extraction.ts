@@ -2,6 +2,9 @@ import { z } from 'zod'
 
 export const ruleCodes = [
   'listing_present',
+  'listing_details',
+  'application_instructions',
+  'fee_disclaimer',
   'official_active',
   'explicitly_closed',
   'talent_pool',

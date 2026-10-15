@@ -12,6 +12,7 @@ import { Store } from './store'
 import type { Extraction } from './extraction'
 import { liveAnalysisSchema } from '../src/lib/api-schema'
 import { AppError } from './errors'
+import { analyzePage } from './page-analysis'
 
 const url = 'https://careers.example.com/jobs/engineer'
 const quote = 'Senior Engineer at Example Systems'
@@ -171,7 +172,15 @@ function fakeProvider() {
     assert.equal(new Headers(init?.headers).get('x-api-key'), 'test-key')
     if (endpoint.startsWith('https://api.fetch.tinyfish.ai'))
       return Response.json({
-        results: [{ url, final_url: url, title: primary.title, text: primary.text, links: [] }],
+        results: [
+          {
+            url,
+            final_url: url,
+            title: 'Job Application for Senior Engineer at Example Systems',
+            text: `# Senior Engineer\n\n${primary.text}\n\nRequirements: Build distributed systems with our engineering team. Candidates can apply for this role using the application section.`,
+            links: [],
+          },
+        ],
         errors: [],
       })
     if (endpoint.startsWith('https://api.search.tinyfish.ai')) return Response.json({ results: [] })
@@ -202,6 +211,27 @@ test('Fetch handles HTTP-200 per-URL failures without inventing evidence', async
     async (value) => value,
   )
   await assert.rejects(provider.page(url), /blocked automated access/)
+})
+
+test('a successful Fetch containing the Naukri application error is never scored', async () => {
+  const provider = new TinyFish(
+    'test-key',
+    async () =>
+      Response.json({
+        results: [
+          {
+            url,
+            text: '## Application error: a client-side exception has occurred (see the browser console for more information).',
+          },
+        ],
+        errors: [],
+      }),
+    async (value) => value,
+  )
+  await assert.rejects(
+    provider.page(url),
+    (error: unknown) => error instanceof AppError && error.code === 'SOURCE_PAGE_ERROR',
+  )
 })
 test('provider authorization and credit errors are actionable and never leak the key', async () => {
   for (const status of [401, 402, 429]) {
@@ -303,17 +333,16 @@ test('API runs the real pipeline against a stub provider, persists cache, and sc
   assert.equal(task.report.scam.value, 45)
   assert.equal(
     task.report.signals.find((signal: { rule: string }) => signal.rule === 'upfront_fee').quote,
-    fee,
+    primary.text,
   )
   assert.equal((await fetch(`${address}/api/analyses/${task.id}`)).status, 404)
-  const runBody = calls.find((call) => call.endpoint.endsWith('/run-async'))!.body as {
-    agent_config: unknown
-    use_vault: boolean
-    goal: string
-  }
-  assert.equal(runBody.use_vault, false)
-  assert.match(runBody.goal, /Do not walk the application flow/)
-  assert.deepEqual(runBody.agent_config, { max_duration_seconds: 180 })
+  assert.equal(task.report.analysisMethod, 'fetch-rules')
+  assert.equal(task.report.providerRunId, undefined)
+  assert.equal(task.report.coverage.applyFlow, false)
+  assert.equal(
+    calls.every((call) => call.endpoint === 'https://api.fetch.tinyfish.ai'),
+    true,
+  )
   const count = calls.length
   const cached = await (
     await fetch(`${address}/api/analyses`, {
@@ -330,6 +359,44 @@ test('API runs the real pipeline against a stub provider, persists cache, and sc
   assert.equal(calls.length, count)
   assert.equal((await storage.snapshots(url)).length, 1)
   assert.equal(JSON.stringify(task).includes('test-key'), false)
+})
+
+test('page analysis scores explicit text, keeps disclaimer context, and rejects index pages', () => {
+  const page: Page = {
+    ...primary,
+    title: 'Senior Engineer',
+    text: `# Senior Engineer\n\nBengaluru, India\n\nThis role requires experience building distributed systems. Candidates will collaborate with our engineering team on testing and design.\n\nWe are building a talent pool for future opportunities.\n\n${fee}\n\n## Apply for this job`,
+  }
+  const extraction = analyzePage(page)
+  const result = report(extraction, page)
+  assert.equal(result.ghost.value, 20)
+  assert.equal(result.scam.value, 45)
+  assert.ok(result.signals.every((signal) => signal.quote && grounded(signal.quote, page)))
+  assert.equal(result.coverage.applyFlow, false)
+  const disclaimer = {
+    ...page,
+    text: page.text.replace(
+      fee,
+      'We never ask candidates to pay a registration fee before the interview. Beware of recruitment scams.',
+    ),
+  }
+  assert.equal(report(analyzePage(disclaimer), disclaimer).scam.value, 0)
+  assert.ok(analyzePage(disclaimer).observations.some((item) => item.code === 'fee_disclaimer'))
+  assert.throws(
+    () => analyzePage({ ...page, text: page.text.replace('# Senior Engineer', '# Search jobs') }),
+    /specific job/,
+  )
+  assert.throws(
+    () => analyzePage({ ...page, url: 'https://careers.example.com/jobs' }),
+    /specific job/,
+  )
+  assert.equal(
+    analyzePage({
+      ...page,
+      url: 'https://www.naukri.com/job-listings-engineer-company-200520500046',
+    }).job.title,
+    'Senior Engineer',
+  )
 })
 test('missing credentials and foreign origins fail explicitly without starting provider work', async (t) => {
   const app = createApp({ store: store() })

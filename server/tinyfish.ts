@@ -3,6 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { AppError } from './errors'
 import { extractionGoal, extractionSchema, outputSchema } from './extraction'
 import { assertPublicUrl } from './urls'
+import { readCloudPage } from './cloud-page'
 
 const pageSchema = z.object({
   url: z.string(),
@@ -18,6 +19,7 @@ export type Page = {
   text: string
   links: string[]
   fetchedAt: string
+  retrieval?: 'fetch' | 'browser'
 }
 const AGENT = 'https://agent.tinyfish.ai'
 
@@ -42,6 +44,7 @@ export class Budget {
 }
 const fetchBudget = new Budget(25)
 const searchBudget = new Budget(5)
+const browserBudget = new Budget(20, 3600000)
 const agentBudget = new Budget(Number(process.env.TINYFISH_RUNS_PER_HOUR) || 20, 3600000)
 
 export class TinyFish {
@@ -51,6 +54,10 @@ export class TinyFish {
     private validate = assertPublicUrl,
     private pollDelay = 4000,
   ) {}
+  async renderedPage(url: string, signal?: AbortSignal) {
+    browserBudget.take()
+    return readCloudPage(url, this.key, signal)
+  }
   private async json(endpoint: string, body?: unknown, signal?: AbortSignal): Promise<unknown> {
     let response: Response
     try {
@@ -119,7 +126,15 @@ export class TinyFish {
     fetchBudget.take()
     const raw = await this.json(
       'https://api.fetch.tinyfish.ai',
-      { urls: [url], format: 'markdown', links: true, ttl: 0, per_url_timeout_ms: 45000 },
+      {
+        urls: [url],
+        format: 'markdown',
+        links: true,
+        ttl: 0,
+        per_url_timeout_ms: 45000,
+        purpose:
+          'Read a public job description for a page-text report of ghost-job and scam-risk signals with quoted evidence. No applications, personal data, or website interactions.',
+      },
       signal,
     )
     const parsed = z
@@ -141,11 +156,22 @@ export class TinyFish {
       }
       throw new AppError(
         'SOURCE_UNAVAILABLE',
-        `${labels[code] ?? 'The listing could not be read.'} Try its public employer careers URL. No score can be inferred from this failure.`,
+        `${labels[code] ?? 'The listing could not be read.'} No score can be inferred from this access failure.`,
         422,
       )
     }
     const page = result.data
+    if (
+      page.text.length < 1500 &&
+      /application error:.*client-side exception|application error:.*server-side exception/i.test(
+        page.text,
+      )
+    )
+      throw new AppError(
+        'SOURCE_PAGE_ERROR',
+        'The job site returned an application error instead of a job description. No scores can be calculated from an error page.',
+        422,
+      )
     const final = await this.validate(page.final_url || page.url)
     return {
       url: final,
@@ -157,19 +183,41 @@ export class TinyFish {
     }
   }
   async search(title: string, signal?: AbortSignal): Promise<string[]> {
+    return (await this.searchListings(`${title.slice(0, 180)} official careers job`, signal)).map(
+      (item) => item.url,
+    )
+  }
+  async searchListings(
+    query: string,
+    signal?: AbortSignal,
+  ): Promise<{ url: string; title: string; snippet: string }[]> {
     searchBudget.take()
     const endpoint = new URL('https://api.search.tinyfish.ai')
-    endpoint.searchParams.set('query', `${title.slice(0, 180)} official careers job`)
+    endpoint.searchParams.set('query', query.slice(0, 1500))
+    endpoint.searchParams.set(
+      'purpose',
+      'Find the exact public job posting by its listing ID to retrieve evidence for a job-risk report. Do not substitute another vacancy.',
+    )
     endpoint.searchParams.set('location', 'IN')
     endpoint.searchParams.set('language', 'en')
     const raw = await this.json(endpoint.toString(), undefined, signal)
-    const result = z.object({ results: z.array(z.object({ url: z.string() })) }).safeParse(raw)
+    const result = z
+      .object({
+        results: z.array(
+          z.object({
+            url: z.string(),
+            title: z.string().default(''),
+            snippet: z.string().default(''),
+          }),
+        ),
+      })
+      .safeParse(raw)
     if (!result.success)
       throw new AppError('SEARCH_FORMAT', 'Supporting search results could not be read.')
-    const safe: string[] = []
+    const safe: { url: string; title: string; snippet: string }[] = []
     for (const candidate of result.data.results.slice(0, 5)) {
       try {
-        safe.push(await this.validate(candidate.url))
+        safe.push({ ...candidate, url: await this.validate(candidate.url) })
       } catch {
         /* Reject unsafe search leads. */
       }

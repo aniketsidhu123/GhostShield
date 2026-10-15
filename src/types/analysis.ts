@@ -40,6 +40,14 @@ export interface JobAnalysis {
   cached?: boolean
   scoringVersion?: string
   providerRunId?: string
+  analysisMethod?: 'agent' | 'fetch-rules' | 'browser-rules'
+  resolution?: {
+    platform: string
+    submittedUrl: string
+    resolvedUrl: string
+    method: 'direct' | 'exact-id-search' | 'cloud-render'
+    jobId?: string
+  }
 }
 
 export interface JobAnalysisProps {

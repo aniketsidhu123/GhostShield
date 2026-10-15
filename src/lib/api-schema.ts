@@ -71,6 +71,16 @@ export const analysisSchema = z.object({
   cached: z.boolean().optional(),
   scoringVersion: z.string().optional(),
   providerRunId: z.string().optional(),
+  analysisMethod: z.enum(['agent', 'fetch-rules', 'browser-rules']).optional(),
+  resolution: z
+    .object({
+      platform: z.string().max(100),
+      submittedUrl: httpUrl,
+      resolvedUrl: httpUrl,
+      method: z.enum(['direct', 'exact-id-search', 'cloud-render']),
+      jobId: z.string().max(100).optional(),
+    })
+    .optional(),
 })
 export const liveAnalysisSchema = analysisSchema.refine(
   (report) => report.mode === 'live' && !!report.analyzedUrl && !!report.requestedUrl,

@@ -181,7 +181,7 @@ function App() {
               <div>
                 <strong>
                   {isLive
-                    ? `TinyFish evidence check${analysis.cached ? ' · cached within the last hour' : ''}`
+                    ? `TinyFish ${analysis.analysisMethod === 'fetch-rules' ? 'Fetch · page-text check' : analysis.analysisMethod === 'browser-rules' ? 'Browser · page-text check' : 'evidence check'}${analysis.cached ? ' · cached within the last hour' : ''}`
                     : 'Sample report — no live scan performed'}
                 </strong>
                 <p>
@@ -193,8 +193,33 @@ function App() {
             </div>
             {requestedUrl && (
               <div className="requested-url">
-                <span>{isLive ? 'ANALYZED LISTING' : 'SAMPLE LINK'}</span>
+                <span>{isLive ? 'SUBMITTED LINK' : 'SAMPLE LINK'}</span>
                 <p>{requestedUrl}</p>
+              </div>
+            )}
+            {isLive && analysis.resolution && (
+              <div className="requested-url">
+                <span>
+                  {analysis.resolution.platform} ·{' '}
+                  {analysis.resolution.method === 'exact-id-search'
+                    ? 'SAME JOB FOUND BY SEARCH'
+                    : analysis.resolution.method === 'cloud-render'
+                      ? 'CLOUD-RENDERED PAGE'
+                      : 'DIRECT LISTING'}
+                </span>
+                <p>
+                  <a
+                    href={analysis.resolution.resolvedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {analysis.resolution.resolvedUrl}
+                  </a>
+                </p>
+                <p>
+                  Job ID: {analysis.resolution.jobId ?? 'See source URL'}. Evidence covers this
+                  listing only.
+                </p>
               </div>
             )}
             {!isLive && (
@@ -404,16 +429,17 @@ function App() {
               <CircleHelp size={19} />
               <p>
                 These weights have not been calibrated against a labelled dataset. Live observations
-                are classified by TinyFish and their quotes checked against fetched text. Scores do
-                not establish intent or fraud. Confidence describes coverage separately from the
-                score.
+                are extracted from TinyFish Fetch content using local text rules, with quotes
+                checked against that content. Scores do not establish intent or fraud. Confidence
+                describes coverage separately from the score.
               </p>
             </div>
             <h3 className="modal-subheading">What a live check needs</h3>
             <p className="modal-body-copy">
-              A cross-source listing match, dated snapshots, independent source evidence, and
-              optional apply-flow checks. A low scam score does not verify safety; a missing
-              careers-page match does not prove a ghost job.
+              The current scan covers the public listing text and starts dated snapshots.
+              Cross-source employer verification and application-flow inspection are not included. A
+              low scam score does not verify safety; a missing careers-page match does not prove a
+              ghost job.
             </p>
           </Modal>
         )}
@@ -494,17 +520,20 @@ function App() {
         {dialog === 'probe' && (
           <Modal title="Look inside the listing." onClose={() => setDialog(null)}>
             <p className="modal-intro">
-              TinyFish reads the posting and supporting sources. The server checks quoted evidence
-              and calculates separate signal indices. You can include a public apply-flow inspection
-              when starting a scan.
+              TinyFish Fetch reads the public posting. The server extracts exact excerpts and
+              calculates two independent signal indices using disclosed text rules. Application
+              steps and employer identity are not independently inspected.
             </p>
             <div className="pipeline-steps">
               <article>
                 <FileSearch size={23} />
                 <div>
                   <span>01 / FIND THE SOURCE</span>
-                  <h3>Does the employer list this role?</h3>
-                  <p>Match the job to the employer’s own careers page and compare the details.</p>
+                  <h3>Read the public job description</h3>
+                  <p>
+                    Fetch one specific role and retain source links, exact excerpts and the check
+                    time.
+                  </p>
                 </div>
               </article>
               <article>
@@ -513,19 +542,20 @@ function App() {
                   <span>02 / FOLLOW THE HISTORY</span>
                   <h3>A new role, or the same old listing?</h3>
                   <p>
-                    Compare dated snapshots to surface long-running and repeatedly posted roles.
+                    Save a dated content hash on each day you scan. A first check cannot establish
+                    reposting.
                   </p>
                 </div>
               </article>
               <article>
                 <ScanLine size={23} />
                 <div>
-                  <span>03 / INSPECT THE APPLY FLOW</span>
-                  <h3>What happens after you click apply?</h3>
+                  <span>03 / SCORE OBSERVED TEXT</span>
+                  <h3>What does this page actually say?</h3>
                   <p>
-                    Optional: TinyFish inspects public application steps for fees and data requests.
-                    It never fills forms or submits an application. Login walls and unverifiable
-                    steps are reported as limitations.
+                    Explicit payment requests and future-opening language can add points. Every
+                    contribution links to a quote. Hidden application steps remain outside this
+                    check.
                   </p>
                 </div>
               </article>

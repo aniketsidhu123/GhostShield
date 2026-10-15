@@ -5,8 +5,29 @@ import type { Snapshot } from './store'
 import { canonicalUrl } from './urls'
 import { AppError } from './errors'
 
-export const SCORING_VERSION = 'observed-signals-v1'
+export const SCORING_VERSION = 'board-page-signals-v3'
 export const rules = {
+  listing_details: {
+    kind: 'verified',
+    weight: 0,
+    title: 'Role details are published',
+    description:
+      'The fetched page describes duties or requirements. This is page content, not verification of hiring intent.',
+  },
+  application_instructions: {
+    kind: 'verified',
+    weight: 0,
+    title: 'An application section is visible',
+    description:
+      'The fetched page includes an Apply section. No form was filled or submitted, and later steps were not inspected.',
+  },
+  fee_disclaimer: {
+    kind: 'verified',
+    weight: 0,
+    title: 'A no-payment notice is published',
+    description:
+      'The page warns against recruitment payments. This statement adds no risk points and does not independently establish legitimacy.',
+  },
   listing_present: {
     kind: 'verified',
     weight: 0,
@@ -112,7 +133,7 @@ export function buildReport(input: {
   extraction: Extraction
   history: Snapshot[]
   probe: boolean
-  runId: string
+  runId?: string
   limitations: string[]
 }): JobAnalysis {
   const { extraction, primary, history } = input
@@ -251,7 +272,7 @@ export function buildReport(input: {
       'The application flow was not inspected; fees or data requests in later steps may be missed.',
     )
   limitations.push(
-    'These are uncalibrated, rule-based signal indices, not probabilities or proof of employer intent or fraud. Agent classifications can be mistaken; review the quoted sources.',
+    'These are uncalibrated, rule-based signal indices, not probabilities or proof of employer intent or fraud. Text classifications can be mistaken; review the quoted sources.',
   )
   function score(kind: 'ghost' | 'scam'): RiskScore {
     const points = Math.min(
@@ -313,6 +334,11 @@ export function buildReport(input: {
     })),
     scoringVersion: SCORING_VERSION,
     providerRunId: input.runId,
+    analysisMethod: input.runId
+      ? 'agent'
+      : primary.retrieval === 'browser'
+        ? 'browser-rules'
+        : 'fetch-rules',
     cached: false,
     // The posting date is stored in snapshot history by the pipeline, not inferred from page metadata.
     ...{
