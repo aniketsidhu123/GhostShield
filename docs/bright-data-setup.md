@@ -39,6 +39,24 @@ For repeatable real-provider verification with the API running:
 npm run test:live -- "https://www.indeed.com/viewjob?jk=REAL_JOB_ID"
 ```
 
-The live script validates the report schema, recomputes totals, independently retrieves the same record to check quotes, and verifies the cache. This verification may consume an additional provider record. Multiple URLs are supported. JSON results are stored under ignored `.qa/`.
+The live script validates the report schema, recomputes totals and verifies quotes and the report cache. TinyFish text is independently refetched. Indeed verification shares durable collection state and reuses the existing description/snapshot instead of submitting a duplicate scrape; results disclose `evidenceReused`. Multiple URLs are supported. JSON results are stored under ignored `.qa/`.
 
 Fixture tests (`npm test`) cover routing, record validation, async snapshots, sanitized failures, score independence and caching. Passing fixture tests does not establish that the account or a real Indeed listing works. Live verification requires your configured key and a readable job record.
+
+## Cooldown and snapshot reuse
+
+Indeed crawler `rate_limit` records and HTTP 429 responses now pause new Indeed retrieval attempts for at least **30 minutes** across all Indeed URLs on the configured backend. A longer HTTP `Retry-After` is respected. The app displays an explicit retry time in UTC and does not generate scores from errors. Naukri, LinkedIn and ATS routing is unchanged; their TinyFish checks do not consult the Indeed cooldown.
+
+An unfinished snapshot remains saved after timeout or restart. After a one-minute backoff, another request checks that same snapshot with GETs; it does not submit a new scrape. Concurrent requests for the same job ID share work, including copied links with different tracking parameters. Complete validated descriptions can be reused for one hour, preserving the original retrieval timestamp and disclosing reuse. Terminal unreadable-job failures have a ten-minute backoff. Expiry never starts work automatically; a user must request another scan.
+
+State is stored under `DATA_DIR` (default `.data`) in an account-key-scoped `indeed-*.json` file. It contains snapshot IDs, cooldowns, submission claims and selected validated job fields, never API keys. Description reuse ends after one hour; old terminal entries are pruned after 24 hours when starting new work. Pending and uncertain submissions are retained. Atomic file claims prevent duplicate POSTs between local processes sharing this directory. Multiple deployment machines need shared transactional storage before sharing this guarantee.
+
+If a POST has an uncertain outcome before its snapshot ID is received, the saved claim blocks repeat submissions even after restart. Check the provider dashboard and associate its existing snapshot using:
+
+```powershell
+npm run resume:indeed -- "https://www.indeed.com/viewjob?jk=EXACT_JOB_ID" "sd_EXISTING_SNAPSHOT"
+```
+
+This recovery command can only issue GET requests. It validates the job ID before accepting evidence and respects existing cooldowns. It also registers snapshots from earlier versions of the integration. Once a valid description is saved, paste the same job link in the app to produce the report without a new collection.
+
+A corrupt state file or a stuck `.lock` fails closed. An administrator should investigate saved state and confirm that no process holds the lock before removing a stale lock. Do not delete submission state to retry blindly: the provider may still be processing that collection.

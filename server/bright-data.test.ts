@@ -9,6 +9,12 @@ import { resolveWithFallback } from './provider-routing'
 import { analyze, cacheKey } from './pipeline'
 import { Store } from './store'
 import { liveAnalysisSchema } from '../src/lib/api-schema'
+import { IndeedState } from './indeed-state'
+import { writeFile } from 'node:fs/promises'
+import { once } from 'node:events'
+import type { AddressInfo } from 'node:net'
+import { createApp } from './app'
+import { jobStatusSchema } from '../src/lib/api-schema'
 
 const url = 'https://in.indeed.com/viewjob?jk=34797a0025b9529d'
 // Deliberately fictional transport fixtures, never used by the production adapter.
@@ -228,4 +234,260 @@ test('working TinyFish listings and non-Indeed failures never call Bright Data',
     /BRIGHT_DATA_API_KEY/,
   )
   assert.equal(fallbackCalls, 0)
+})
+
+test('rate-limit cooldown survives restart, blocks other Indeed jobs and expires without auto-retry', async () => {
+  const file = resolve('.qa', `indeed-cooldown-${randomUUID()}.json`)
+  let now = Date.now(),
+    posts = 0
+  const transport: typeof fetch = async () => {
+    posts++
+    return json([{ error_code: 'rate_limit', error: 'private' }])
+  }
+  const first = new BrightData('test', transport, validate, 0, new IndeedState(file), () => now)
+  await assert.rejects(
+    first.indeed(url),
+    (e: unknown) => e instanceof AppError && e.code === 'INDEED_COOLDOWN' && !!e.retryAt,
+  )
+  const restarted = new BrightData('test', transport, validate, 0, new IndeedState(file), () => now)
+  let tinyCalls = 0
+  const tiny = {
+    page: async () => {
+      tinyCalls++
+      throw new Error('Must not fetch during cooldown')
+    },
+  } as unknown as TinyFish
+  await assert.rejects(
+    resolveWithFallback(url, tiny, () => {}, AbortSignal.timeout(1000), restarted),
+    /Retry after/,
+  )
+  await assert.rejects(
+    restarted.indeed('https://www.indeed.com/viewjob?jk=aaaaaaaaaaaaaaaa'),
+    /Retry after/,
+  )
+  assert.equal(posts, 1)
+  assert.equal(tinyCalls, 0)
+  now += 30 * 60000 + 1
+  assert.equal(posts, 1, 'expiry never triggers background submission')
+  await assert.rejects(restarted.indeed(url), /Retry after/)
+  assert.equal(posts, 2)
+})
+
+test('timed-out snapshots resume across restart with GET only and then reuse validated data', async () => {
+  const file = resolve('.qa', `indeed-resume-${randomUUID()}.json`)
+  let now = Date.now(),
+    posts = 0,
+    ready = false,
+    gets = 0
+  const transport: typeof fetch = async (input, init) => {
+    if (init?.method === 'POST') {
+      posts++
+      return json({ snapshot_id: 'sd_resume' }, 202)
+    }
+    gets++
+    return String(input).includes('/progress/')
+      ? json({ status: ready ? 'ready' : 'running' })
+      : json([record])
+  }
+  await assert.rejects(
+    new BrightData('test', transport, validate, 0, new IndeedState(file), () => now).indeed(url),
+    /pending/,
+  )
+  const restarted = new BrightData('test', transport, validate, 0, new IndeedState(file), () => now)
+  const before = gets
+  await assert.rejects(restarted.indeed(url), /Retry after/)
+  assert.equal(gets, before)
+  now += 61000
+  ready = true
+  const result = await restarted.indeed(url)
+  assert.equal(result.extraction.job.title, record.job_title)
+  assert.equal(result.snapshotId, 'sd_resume')
+  assert.equal(posts, 1)
+  const successfulGets = gets
+  const cached = await new BrightData(
+    'test',
+    transport,
+    validate,
+    0,
+    new IndeedState(file),
+    () => now,
+  ).indeed(url)
+  assert.equal(cached.page.fetchedAt, result.page.fetchedAt)
+  assert.equal(gets, successfulGets)
+})
+
+test('concurrent clients and uncertain POST outcomes cannot submit duplicates', async () => {
+  const file = resolve('.qa', `indeed-claims-${randomUUID()}.json`)
+  let posts = 0
+  const transport: typeof fetch = async () => {
+    posts++
+    throw new Error('Unknown POST outcome')
+  }
+  const clients = [1, 2].map(
+    () => new BrightData('test', transport, validate, 0, new IndeedState(file)),
+  )
+  const results = await Promise.allSettled(clients.map((client) => client.indeed(url)))
+  assert.ok(results.every((result) => result.status === 'rejected'))
+  assert.equal(posts, 1)
+  await assert.rejects(
+    new BrightData('test', transport, validate, 0, new IndeedState(file)).indeed(url),
+    /snapshot ID has not been confirmed/,
+  )
+  assert.equal(posts, 1)
+})
+
+test('HTTP Retry-After during polling preserves the snapshot for a GET-only retry', async () => {
+  let now = Date.now(),
+    posts = 0,
+    limited = true
+  const transport: typeof fetch = async (input, init) => {
+    if (init?.method === 'POST') {
+      posts++
+      return json({ snapshot_id: 'sd_limited' }, 202)
+    }
+    if (limited) return new Response('', { status: 429, headers: { 'Retry-After': '3600' } })
+    return String(input).includes('/progress/') ? json({ status: 'ready' }) : json([record])
+  }
+  const client = new BrightData('test', transport, validate, 0, new IndeedState(), () => now)
+  await assert.rejects(
+    client.indeed(url),
+    (error: unknown) =>
+      error instanceof AppError && error.retryAt === new Date(now + 3600000).toISOString(),
+  )
+  now += 31 * 60000
+  await assert.rejects(client.indeed(url), /Retry after/)
+  now += 30 * 60000
+  limited = false
+  assert.equal((await client.indeed(url)).snapshotId, 'sd_limited')
+  assert.equal(posts, 1)
+})
+
+test('administrative recovery of an existing snapshot only reads and blocks duplicate retries on failure', async () => {
+  let gets = 0
+  const transport: typeof fetch = async (input, init) => {
+    assert.equal(init?.method, 'GET')
+    gets++
+    return String(input).includes('/progress/')
+      ? json({ status: 'ready' })
+      : json([{ error_code: 'rate_limit' }])
+  }
+  const client = new BrightData('test', transport, validate, 0)
+  await assert.rejects(client.resumeSnapshot(url, 'sd_existing'), /Retry after/)
+  await assert.rejects(client.indeed(url), /Retry after/)
+  assert.equal(gets, 2)
+})
+
+test('corrupted saved state fails closed without starting another scrape', async () => {
+  const file = resolve('.qa', `indeed-corrupt-${randomUUID()}.json`)
+  await writeFile(file, 'broken JSON')
+  let calls = 0
+  const client = new BrightData(
+    'test',
+    async () => {
+      calls++
+      return json([record])
+    },
+    validate,
+    0,
+    new IndeedState(file),
+  )
+  await assert.rejects(client.indeed(url), /Saved Indeed collection state could not be read/)
+  assert.equal(calls, 0)
+})
+
+test('simultaneous clicks join one collection rather than creating duplicate POSTs', async () => {
+  let posts = 0
+  const client = new BrightData(
+    'test',
+    async () => {
+      posts++
+      return json([record])
+    },
+    validate,
+    0,
+  )
+  const [first, second] = await Promise.all([
+    client.indeed(url),
+    client.indeed(url + '&utm_source=copy'),
+  ])
+  assert.equal(posts, 1)
+  assert.equal(first.page.text, second.page.text)
+})
+
+test('API exposes cooldown and retry time without a report, while ATS still completes', async (t) => {
+  const state = new IndeedState()
+  const until = Date.now() + 30 * 60000
+  await state.transaction((data) => {
+    data.cooldownUntil = until
+  })
+  let brightCalls = 0,
+    tinyCalls = 0
+  const fallback = new BrightData(
+    'test',
+    async () => {
+      brightCalls++
+      throw new Error('No calls during cooldown')
+    },
+    validate,
+    0,
+    state,
+  )
+  const target = 'https://careers.example.com/jobs/engineer'
+  const provider = {
+    page: async (value: string) => {
+      tinyCalls++
+      return {
+        url: value,
+        title: record.job_title,
+        text: `${record.job_title}\n${record.description_text}\n\nApply for this role.`,
+        links: [],
+        fetchedAt: new Date().toISOString(),
+      }
+    },
+  } as unknown as TinyFish
+  const app = createApp({
+    key: 'test',
+    fallback,
+    provider,
+    validate,
+    store: new Store(resolve('.qa', `cooldown-api-${randomUUID()}`)),
+  })
+  app.listen(0, '127.0.0.1')
+  await once(app, 'listening')
+  t.after(() => {
+    app.closeAllConnections()
+    app.close()
+  })
+  const origin = `http://127.0.0.1:${(app.address() as AddressInfo).port}`
+  const run = async (jobUrl: string) => {
+    const response = await fetch(origin + '/api/analyses', {
+      method: 'POST',
+      headers: { Origin: 'http://127.0.0.1:5173', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: jobUrl }),
+    })
+    const cookie = response.headers.get('set-cookie')!.split(';')[0]
+    let task = jobStatusSchema.parse(await response.json())
+    for (let i = 0; i < 100 && ['queued', 'running'].includes(task.status); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      task = jobStatusSchema.parse(
+        await (
+          await fetch(origin + '/api/analyses/' + task.id, { headers: { Cookie: cookie } })
+        ).json(),
+      )
+    }
+    return task
+  }
+  for (let i = 0; i < 2; i++) {
+    const blocked = await run(url)
+    assert.equal(blocked.status, 'failed')
+    assert.equal(blocked.error?.code, 'INDEED_COOLDOWN')
+    assert.equal(blocked.error?.retryAt, new Date(until).toISOString())
+    assert.equal(blocked.report, undefined)
+  }
+  assert.equal(tinyCalls, 0)
+  const working = await run(target)
+  assert.equal(working.status, 'completed')
+  assert.equal(working.report?.analysisMethod, 'fetch-rules')
+  assert.equal(tinyCalls, 1)
+  assert.equal(brightCalls, 0)
 })

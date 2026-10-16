@@ -11,6 +11,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --import tsx --test src/lib/analysis.test.ts src/lib/cinema.test.ts server/*.test.ts",
     "test:live": "node --env-file=.env --import tsx scripts/live-smoke.ts",
+    "resume:indeed": "node --env-file=.env --import tsx scripts/resume-indeed.ts",
     "prepare:video": "node scripts/prepare-video.mjs",
     "format": "prettier --write src index.html vite.config.ts tailwind.config.js"
   },

@@ -6,7 +6,7 @@ import { TinyFish } from '../server/tinyfish'
 import { grounded } from '../server/scoring'
 import { jobStatusSchema } from '../src/lib/api-schema'
 import { scopeListing } from '../server/resolve-listing'
-import { BrightData } from '../server/bright-data'
+import { configuredBrightData } from '../server/bright-data-config'
 
 const origin = 'http://127.0.0.1:3001'
 const urls = process.argv.slice(2)
@@ -18,7 +18,7 @@ if (!urls.length)
 const key = process.env.TINYFISH_API_KEY?.trim()
 if (!key) throw new Error('Configure TINYFISH_API_KEY in .env first.')
 const provider = new TinyFish(key)
-const fallback = new BrightData(process.env.BRIGHT_DATA_API_KEY?.trim() ?? '')
+const fallback = configuredBrightData(process.env.BRIGHT_DATA_API_KEY?.trim() ?? '')
 const results = []
 await mkdir('.qa', { recursive: true })
 const resultPath = `.qa/live-smoke-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
@@ -66,7 +66,7 @@ for (const url of urls) {
     )
     assert.equal(report.providerRunId, undefined)
     assert.equal(report.coverage.applyFlow, false)
-    // Independently request fresh provider text: all rendered quotes must still occur on the page.
+    // TinyFish is independently refetched. Indeed reuses durable collection state, avoiding duplicate POSTs.
     const page = scopeListing(
       await (report.analysisMethod === 'bright-data-rules'
         ? fallback.indeed(report.analyzedUrl!).then((result) => result.page)
@@ -109,6 +109,7 @@ for (const url of urls) {
       ghost: report.ghost.value,
       scam: report.scam.value,
       quotesVerified: report.signals.length,
+      evidenceReused: report.analysisMethod === 'bright-data-rules',
       cacheVerified: true,
       initialCacheHit: !!report.cached,
     })

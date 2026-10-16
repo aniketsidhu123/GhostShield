@@ -11,6 +11,18 @@ export async function resolveWithFallback(
   signal: AbortSignal,
   fallback?: BrightData,
 ) {
+  const resolved = (result: Awaited<ReturnType<BrightData['indeed']>>) => ({
+    ...result,
+    resolution: {
+      platform: 'Indeed',
+      submittedUrl: url,
+      resolvedUrl: result.page.url,
+      method: 'bright-data' as const,
+      jobId: identifyJobLink(url).jobId,
+    },
+  })
+  const existing = await fallback?.existing(url, signal, stage)
+  if (existing) return resolved(existing)
   try {
     return await resolveListing(url, provider, stage, signal)
   } catch (error) {
@@ -29,15 +41,6 @@ export async function resolveWithFallback(
         503,
       )
     const result = await fallback.indeed(url, signal, stage)
-    return {
-      ...result,
-      resolution: {
-        platform: 'Indeed',
-        submittedUrl: url,
-        resolvedUrl: result.page.url,
-        method: 'bright-data' as const,
-        jobId: identifyJobLink(url).jobId,
-      },
-    }
+    return resolved(result)
   }
 }

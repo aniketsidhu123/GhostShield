@@ -91,7 +91,9 @@ export const jobStatusSchema = z.object({
   status: z.enum(['queued', 'running', 'completed', 'failed']),
   stage: z.string().max(500),
   report: liveAnalysisSchema.optional(),
-  error: z.object({ code: z.string(), message: z.string() }).optional(),
+  error: z
+    .object({ code: z.string(), message: z.string(), retryAt: z.string().datetime().optional() })
+    .optional(),
 })
 
 export type AnalysisTask = z.infer<typeof jobStatusSchema>
