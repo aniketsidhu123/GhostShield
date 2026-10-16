@@ -71,13 +71,13 @@ export const analysisSchema = z.object({
   cached: z.boolean().optional(),
   scoringVersion: z.string().optional(),
   providerRunId: z.string().optional(),
-  analysisMethod: z.enum(['agent', 'fetch-rules', 'browser-rules']).optional(),
+  analysisMethod: z.enum(['agent', 'fetch-rules', 'browser-rules', 'bright-data-rules']).optional(),
   resolution: z
     .object({
       platform: z.string().max(100),
       submittedUrl: httpUrl,
       resolvedUrl: httpUrl,
-      method: z.enum(['direct', 'exact-id-search', 'cloud-render']),
+      method: z.enum(['direct', 'exact-id-search', 'cloud-render', 'bright-data']),
       jobId: z.string().max(100).optional(),
     })
     .optional(),

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { AppError, publicError } from './errors'
 import { assertPublicUrl } from './urls'
 import { TinyFish } from './tinyfish'
+import type { BrightData } from './bright-data'
 import { Store } from './store'
 import { analyze, cacheKey } from './pipeline'
 import type { AnalysisTask } from '../src/lib/api-schema'
@@ -17,6 +18,7 @@ interface Options {
   store: Store
   origin?: string
   provider?: TinyFish
+  fallback?: BrightData
   validate?: typeof assertPublicUrl
   run?: typeof analyze
   staticDirectory?: string
@@ -69,7 +71,11 @@ export function createApp(options: Options) {
     const path = new URL(req.url ?? '/', 'http://local').pathname
     try {
       if (path === '/api/health' && req.method === 'GET') {
-        json(res, 200, { configured: !!options.key, provider: 'TinyFish' })
+        json(res, 200, {
+          configured: !!options.key,
+          provider: 'TinyFish',
+          indeedFallbackConfigured: !!options.fallback,
+        })
         return
       }
       if (path.startsWith('/api/')) {
@@ -177,6 +183,7 @@ export function createApp(options: Options) {
                 task.stage = message
               },
               AbortSignal.timeout(360000),
+              options.fallback,
             )
               .then((report) => {
                 task.status = 'completed'

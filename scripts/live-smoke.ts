@@ -6,6 +6,7 @@ import { TinyFish } from '../server/tinyfish'
 import { grounded } from '../server/scoring'
 import { jobStatusSchema } from '../src/lib/api-schema'
 import { scopeListing } from '../server/resolve-listing'
+import { BrightData } from '../server/bright-data'
 
 const origin = 'http://127.0.0.1:3001'
 const urls = process.argv.slice(2)
@@ -17,6 +18,7 @@ if (!urls.length)
 const key = process.env.TINYFISH_API_KEY?.trim()
 if (!key) throw new Error('Configure TINYFISH_API_KEY in .env first.')
 const provider = new TinyFish(key)
+const fallback = new BrightData(process.env.BRIGHT_DATA_API_KEY?.trim() ?? '')
 const results = []
 await mkdir('.qa', { recursive: true })
 const resultPath = `.qa/live-smoke-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
@@ -47,7 +49,7 @@ for (const url of urls) {
     assert.ok(cookie, 'API must create a session')
     let task = jobStatusSchema.parse(await start.json())
     for (let attempt = 0; task.status === 'queued' || task.status === 'running'; attempt++) {
-      assert.ok(attempt < 90, 'Scan timed out')
+      assert.ok(attempt < 200, 'Scan timed out')
       await delay(2000)
       const response = await fetch(`${origin}/api/analyses/${task.id}`, {
         headers: { Cookie: cookie },
@@ -59,14 +61,18 @@ for (const url of urls) {
     assert.equal(task.status, 'completed', task.error?.message)
     const report = task.report!
     assert.equal(report.mode, 'live')
-    assert.ok(['fetch-rules', 'browser-rules'].includes(report.analysisMethod!))
+    assert.ok(
+      ['fetch-rules', 'browser-rules', 'bright-data-rules'].includes(report.analysisMethod!),
+    )
     assert.equal(report.providerRunId, undefined)
     assert.equal(report.coverage.applyFlow, false)
     // Independently request fresh provider text: all rendered quotes must still occur on the page.
     const page = scopeListing(
-      await (report.analysisMethod === 'browser-rules'
-        ? provider.renderedPage(report.analyzedUrl!)
-        : provider.page(report.analyzedUrl!)),
+      await (report.analysisMethod === 'bright-data-rules'
+        ? fallback.indeed(report.analyzedUrl!).then((result) => result.page)
+        : report.analysisMethod === 'browser-rules'
+          ? provider.renderedPage(report.analyzedUrl!)
+          : provider.page(report.analyzedUrl!)),
     )
     assert.ok(report.signals.length > 0)
     for (const signal of report.signals) {

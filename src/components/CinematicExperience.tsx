@@ -298,7 +298,7 @@ export function CinematicExperience({
               </span>
             </button>
             <p className="film-demo-note" id="film-input-description">
-              Live checks via TinyFish · evidence-based signal indices
+              Live source checks · evidence-based signal indices
             </p>
           </div>
         </div>
@@ -357,7 +357,7 @@ export function CinematicExperience({
                 <ShieldAlert size={15} /> Scam risk <b>{analysis.scam.value ?? '—'}</b>
               </button>
             </div>
-            <span className="mobile-demo-note">Live checks via TinyFish · sources included</span>
+            <span className="mobile-demo-note">Live source checks · sources included</span>
           </>
         ) : phase === 'listings' ? (
           <>

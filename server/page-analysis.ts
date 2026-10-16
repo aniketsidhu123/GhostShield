@@ -12,7 +12,7 @@ const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const negative = /\b(?:no|not|never|don't|do not|without|avoid|beware|scam|fraud|warning)\b/i
 
 /** Conservative English text rules over the fetched page, with exact excerpts, no model guesses. */
-export function analyzePage(page: Page): Extraction {
+export function analyzePage(page: Page, structuredJob?: Extraction['job']): Extraction {
   const lines = page.text
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -32,7 +32,9 @@ export function analyzePage(page: Page): Extraction {
         ),
     )
   const titleQuote =
-    heading ?? lines.find((line) => clean(line).toLowerCase() === metaTitle.toLowerCase())
+    structuredJob?.title ??
+    heading ??
+    lines.find((line) => clean(line).toLowerCase() === metaTitle.toLowerCase())
   const title = clean(titleQuote ?? '')
   const path = new URL(page.url).pathname
   const identity = identifyJobLink(page.url)
@@ -55,8 +57,8 @@ export function analyzePage(page: Page): Extraction {
       title,
     ) ||
     page.text.length < 240 ||
-    !roleBody ||
-    !application
+    (!roleBody && !structuredJob) ||
+    (!application && !structuredJob)
   ) {
     throw new AppError(
       'NOT_A_READABLE_JOB',
@@ -205,7 +207,7 @@ export function analyzePage(page: Page): Extraction {
     readable: true,
     isJobListing: true,
     titleQuote,
-    job: {
+    job: structuredJob ?? {
       title,
       employer,
       location: locationLine

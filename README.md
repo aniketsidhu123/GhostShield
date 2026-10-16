@@ -13,6 +13,8 @@ Copy-Item .env.example .env        # skip if .env already exists
 
 Edit `.env` and set `TINYFISH_API_KEY` to your TinyFish key. If you already have a `.env`, edit it instead of copying over it.
 
+For the optional Indeed fallback, also add `BRIGHT_DATA_API_KEY=your_key`. TinyFish remains the first provider for every scan. Bright Data's dedicated Indeed scraper is used only when TinyFish cannot retrieve the selected Indeed description; it is never used for Naukri, LinkedIn or ATS links. See [Bright Data setup](docs/bright-data-setup.md) for the free-tier signup, API-key steps and live test command. Restart the API after changing `.env`.
+
 > [!CAUTION]
 > **Never commit your `.env` file or any real API keys to Git.**
 > The `.gitignore` already excludes `.env` and all `.env.*` variants (except `.env.example`). The key is read server-side only — never use a `VITE_` prefix, which would expose it to the browser bundle. If you suspect a key was committed by mistake, rotate it immediately on the TinyFish dashboard.

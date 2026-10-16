@@ -181,7 +181,7 @@ function App() {
               <div>
                 <strong>
                   {isLive
-                    ? `TinyFish ${analysis.analysisMethod === 'fetch-rules' ? 'Fetch · page-text check' : analysis.analysisMethod === 'browser-rules' ? 'Browser · page-text check' : 'evidence check'}${analysis.cached ? ' · cached within the last hour' : ''}`
+                    ? `${analysis.analysisMethod === 'bright-data-rules' ? 'Bright Data · Indeed fallback' : analysis.analysisMethod === 'fetch-rules' ? 'TinyFish Fetch · page-text check' : analysis.analysisMethod === 'browser-rules' ? 'TinyFish Browser · page-text check' : 'TinyFish evidence check'}${analysis.cached ? ' · cached within the last hour' : ''}`
                     : 'Sample report — no live scan performed'}
                 </strong>
                 <p>
@@ -205,7 +205,9 @@ function App() {
                     ? 'SAME JOB FOUND BY SEARCH'
                     : analysis.resolution.method === 'cloud-render'
                       ? 'CLOUD-RENDERED PAGE'
-                      : 'DIRECT LISTING'}
+                      : analysis.resolution.method === 'bright-data'
+                        ? 'BRIGHT DATA FALLBACK'
+                        : 'DIRECT LISTING'}
                 </span>
                 <p>
                   <a
@@ -429,9 +431,9 @@ function App() {
               <CircleHelp size={19} />
               <p>
                 These weights have not been calibrated against a labelled dataset. Live observations
-                are extracted from TinyFish page content using local text rules, with quotes checked
-                against that content. Scores do not establish intent or fraud. Confidence describes
-                coverage separately from the score.
+                are extracted from retrieved listing content using local text rules, with quotes
+                checked against that content. Scores do not establish intent or fraud. Confidence
+                describes coverage separately from the score.
               </p>
             </div>
             <h3 className="modal-subheading">What a live check needs</h3>
@@ -454,11 +456,12 @@ function App() {
               </div>
               <div>
                 <Globe2 size={22} />
-                <h3>Your URL is sent to TinyFish</h3>
+                <h3>Your URL is sent to the retrieval provider</h3>
                 <p>
                   Scanning sends the public URL to our API and TinyFish for reading and inspection.
-                  The server caches reports and dated content hashes. Avoid links containing private
-                  access tokens or personal information.
+                  If TinyFish cannot read an Indeed listing, its URL may also be sent to Bright
+                  Data. The server caches reports and dated content hashes. Avoid links containing
+                  private access tokens or personal information.
                 </p>
               </div>
               <div>
@@ -520,7 +523,8 @@ function App() {
         {dialog === 'probe' && (
           <Modal title="Look inside the listing." onClose={() => setDialog(null)}>
             <p className="modal-intro">
-              TinyFish reads the public posting, using cloud rendering when needed. The server
+              TinyFish reads the public posting, using cloud rendering when needed. An optional
+              Bright Data fallback retrieves Indeed descriptions when TinyFish cannot. The server
               extracts exact excerpts and calculates two independent signal indices using disclosed
               text rules. Application steps and employer identity are not independently inspected.
             </p>

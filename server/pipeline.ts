@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { TinyFish } from './tinyfish'
 import { Store, digest } from './store'
 import { buildReport, SCORING_VERSION } from './scoring'
-import { resolveListing } from './resolve-listing'
+import { resolveWithFallback } from './provider-routing'
+import type { BrightData } from './bright-data'
 import { liveAnalysisSchema } from '../src/lib/api-schema'
 
 export function cacheKey(url: string, probe: boolean) {
@@ -15,6 +16,7 @@ export async function analyze(
   store: Store,
   stage: (message: string) => void,
   signal: AbortSignal,
+  fallback?: BrightData,
 ) {
   const limitations: string[] = []
   stage('Reading the public job posting…')
@@ -22,7 +24,7 @@ export async function analyze(
     page: primary,
     extraction,
     resolution,
-  } = await resolveListing(url, provider, stage, signal)
+  } = await resolveWithFallback(url, provider, stage, signal, fallback)
   stage('Extracting quoted observations from the fetched job page…')
   if (probe)
     limitations.push(

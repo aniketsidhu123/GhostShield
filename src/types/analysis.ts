@@ -40,12 +40,12 @@ export interface JobAnalysis {
   cached?: boolean
   scoringVersion?: string
   providerRunId?: string
-  analysisMethod?: 'agent' | 'fetch-rules' | 'browser-rules'
+  analysisMethod?: 'agent' | 'fetch-rules' | 'browser-rules' | 'bright-data-rules'
   resolution?: {
     platform: string
     submittedUrl: string
     resolvedUrl: string
-    method: 'direct' | 'exact-id-search' | 'cloud-render'
+    method: 'direct' | 'exact-id-search' | 'cloud-render' | 'bright-data'
     jobId?: string
   }
 }

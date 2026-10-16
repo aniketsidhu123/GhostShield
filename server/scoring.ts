@@ -336,9 +336,11 @@ export function buildReport(input: {
     providerRunId: input.runId,
     analysisMethod: input.runId
       ? 'agent'
-      : primary.retrieval === 'browser'
-        ? 'browser-rules'
-        : 'fetch-rules',
+      : primary.retrieval === 'bright-data'
+        ? 'bright-data-rules'
+        : primary.retrieval === 'browser'
+          ? 'browser-rules'
+          : 'fetch-rules',
     cached: false,
     // The posting date is stored in snapshot history by the pipeline, not inferred from page metadata.
     ...{

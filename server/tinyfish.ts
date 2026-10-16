@@ -19,7 +19,7 @@ export type Page = {
   text: string
   links: string[]
   fetchedAt: string
-  retrieval?: 'fetch' | 'browser'
+  retrieval?: 'fetch' | 'browser' | 'bright-data'
 }
 const AGENT = 'https://agent.tinyfish.ai'
 
