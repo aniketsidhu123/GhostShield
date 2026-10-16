@@ -5,7 +5,7 @@ import type { Snapshot } from './store'
 import { canonicalUrl } from './urls'
 import { AppError } from './errors'
 
-export const SCORING_VERSION = 'board-page-signals-v3'
+export const SCORING_VERSION = 'board-page-signals-v4'
 export const rules = {
   listing_details: {
     kind: 'verified',
@@ -164,7 +164,7 @@ export function buildReport(input: {
     const page = input.pages.find((page) => page.url === url || page.requestedUrl === url)
     if (
       !page ||
-      !grounded(observation.quote, page) ||
+      !grounded(observation.quote, page, observation.code === 'listing_present' ? 3 : 12) ||
       !permits(observation.code, observation.quote)
     ) {
       limitations.push(

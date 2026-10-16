@@ -24,7 +24,7 @@ npm run dev:api
 npm run dev
 ```
 
-Open http://127.0.0.1:5173, choose **Skip to scanner**, and paste a public job URL. Restart the API after changing the key. With no key, the app returns an explicit setup message instead of sample scores. Scans use **TinyFish Fetch** to read real public page text, followed by local evidence extraction and scoring. No Agent run is required. Application steps and employer identity are not independently verified.
+Open http://127.0.0.1:5173, choose **Skip to scanner**, and paste a public job URL from Naukri, LinkedIn, Indeed or an employer/ATS. Restart the API after changing the key. With no key, the app returns an explicit setup message instead of sample scores. Scans use **TinyFish Fetch**, with **TinyFish Browser** rendering for unreadable Naukri/Indeed pages and **TinyFish Search** for exact-ID recovery. No Agent run is required. Application steps and employer identity are not independently verified. Some sites still deny access; support for their URL format does not guarantee every listing is readable.
 
 For a production build:
 
@@ -59,7 +59,9 @@ The source contains rendered words and interface artwork. Those pixels are prese
 
 ## Live analysis and sample scope
 
-Pasted URLs go to the local API and TinyFish Fetch. The server identifies a specific job description, extracts exact excerpts using conservative English text rules, and checks every quoted observation against the fetched text before assigning independent risk points. Reports display the source URL, check time, method, weights and coverage limits. Failed or unreadable pages never fall back to fixtures or receive zero-risk reports. The earlier Agent inspection was declined by TinyFish's content policy; the app now offers a narrower page-text check using its supported Fetch API. Search and Agent clients remain available in source but are not called by this scan flow.
+Pasted URLs go to the local API and TinyFish. LinkedIn `currentJobId` links resolve to the selected role, Indeed `jk`/`vjk` links retain their job ID, Naukri tracking parameters are removed, and Workday `job/` and `details/` links are recognized. A search page without a selected job returns a specific instruction to select a role on that board; users do not have to find the employer careers page.
+
+The server identifies a specific job description, extracts exact excerpts using conservative English text rules, and checks every quoted observation against the retrieved text before assigning independent risk points. Related-job sections are excluded. Reports display the submitted and resolved URLs, job ID, retrieval method, check time, weights and coverage limits. Search results are leads only; snippets and different job IDs never become evidence. Failed or unreadable pages never fall back to fixtures or receive zero-risk reports. The earlier Agent inspection was declined by TinyFish's content policy; the active feature is a narrower page-text check using supported Fetch, Search and Browser APIs. No Agent request is retried or disguised. Cloud browsers only read public content and are terminated after extraction; no sign-in, CAPTCHA or application form is completed.
 
 Reports are cached for one hour in `.data`; one snapshot hash per URL per UTC day starts a real history. No synthetic repost history is used for live checks. A first scan cannot establish reposting. Scores are uncalibrated signal indices, not measured probabilities or proof of intent/fraud. Missing coverage is disclosed, and a closed listing is not automatically penalized as a ghost.
 
@@ -109,7 +111,7 @@ The original `Frontend video.mp4` is preserved. Run `npm run prepare:video` to r
 - Responsive QA checked 390×844 portrait rendering, the larger native scanner, report layout, and horizontal overflow. Keyboard timeline rewind and still-scene selection were exercised. Browser console checks were clean.
 - Physical iOS/Safari testing, slower-device performance, and network/media failure simulation remain release checks.
 - Backend integration tests use simulated provider responses to verify the API, source validation, scores, cache, and errors. Authenticated browser scans on 2026-10-15 returned Deliveroo Staff Software Engineer (Ghost 0, Scam 0) and Isar Aerospace Controls & Automation Engineer (Ghost 20, Scam 0). The latter explicitly describes a talent pool rather than active recruitment. These are signal indices, not probabilities or accusations.
-- With the API running, `npm run test:live` repeats real API checks and independently fetches each source through TinyFish to verify every quote, score total and cache response. It requires `.env` and uses provider allowance. Optional positional arguments supply other public job URLs. Results are written to `.qa/live-smoke-results.json`. Initial reports may be cached; quote verification always re-fetches the sources.
+- With the API running, `npm run test:live` repeats real API checks and independently retrieves each source through TinyFish Fetch or Browser to verify every quote, score total and cache response. It requires `.env` and uses provider allowance. Optional positional arguments supply other public job URLs. Results, including failures, are written incrementally to dated `.qa/live-smoke-*.json` files and finally `.qa/live-smoke-results.json`. Initial reports may be cached; quote verification always requests fresh source content. See the [16 October real-listing verification matrix](docs/live-verification.md) for board coverage and access limitations.
 
 ## Optional Node container
 

@@ -429,9 +429,9 @@ function App() {
               <CircleHelp size={19} />
               <p>
                 These weights have not been calibrated against a labelled dataset. Live observations
-                are extracted from TinyFish Fetch content using local text rules, with quotes
-                checked against that content. Scores do not establish intent or fraud. Confidence
-                describes coverage separately from the score.
+                are extracted from TinyFish page content using local text rules, with quotes checked
+                against that content. Scores do not establish intent or fraud. Confidence describes
+                coverage separately from the score.
               </p>
             </div>
             <h3 className="modal-subheading">What a live check needs</h3>
@@ -520,9 +520,9 @@ function App() {
         {dialog === 'probe' && (
           <Modal title="Look inside the listing." onClose={() => setDialog(null)}>
             <p className="modal-intro">
-              TinyFish Fetch reads the public posting. The server extracts exact excerpts and
-              calculates two independent signal indices using disclosed text rules. Application
-              steps and employer identity are not independently inspected.
+              TinyFish reads the public posting, using cloud rendering when needed. The server
+              extracts exact excerpts and calculates two independent signal indices using disclosed
+              text rules. Application steps and employer identity are not independently inspected.
             </p>
             <div className="pipeline-steps">
               <article>
@@ -531,8 +531,8 @@ function App() {
                   <span>01 / FIND THE SOURCE</span>
                   <h3>Read the public job description</h3>
                   <p>
-                    Fetch one specific role and retain source links, exact excerpts and the check
-                    time.
+                    Resolve your board or ATS link to one specific role and retain source links,
+                    exact excerpts and the check time.
                   </p>
                 </div>
               </article>

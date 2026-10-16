@@ -18,7 +18,10 @@ export function analyzePage(page: Page): Extraction {
     .map((line) => line.trim())
     .filter(Boolean)
   const headings = lines.filter((line) => /^#{1,3}\s+\S/.test(line))
-  const metaTitle = page.title.replace(/^Job Application for\s+/i, '').split(/\s+(?:at|\||–)\s+/)[0]
+  const metaTitle = (
+    page.title.match(/^.+?\s+hiring\s+(.+?)\s+in\s+.+?\s*\|\s*LinkedIn/i)?.[1] ??
+    page.title.replace(/^Job Application for\s+/i, '').split(/\s+(?:at|\||–)\s+/)[0]
+  ).trim()
   const heading =
     headings.find((line) => clean(line).toLowerCase() === metaTitle.toLowerCase()) ??
     headings.find((line) => /^#\s+/.test(line)) ??
@@ -79,6 +82,16 @@ export function analyzePage(page: Page): Extraction {
     }
   }
   const headingIndex = lines.indexOf(titleQuote)
+  if (identity.platform === 'Naukri' && employer === 'Not established') {
+    // Naukri's rendered job header places the publisher immediately below the role.
+    const publisher = clean(lines[headingIndex + 1] ?? '')
+    if (
+      publisher.length >= 2 &&
+      publisher.length <= 120 &&
+      !/^(?:apply|register|login|\d|not disclosed)/i.test(publisher)
+    )
+      employer = publisher
+  }
   let locationLine = lines
     .slice(headingIndex + 1, headingIndex + 5)
     .find(
@@ -111,7 +124,7 @@ export function analyzePage(page: Page): Extraction {
     date: string | null = null,
   ) => {
     if (
-      quote.length >= 12 &&
+      quote.length >= (code === 'listing_present' ? 3 : 12) &&
       quote.length <= 1000 &&
       !observations.some((item) => item.code === code)
     )
@@ -122,12 +135,16 @@ export function analyzePage(page: Page): Extraction {
     .split(/\n\s*\n/)
     .map((text) => text.trim())
     .filter((text) => text.length >= 12 && text.length <= 1000)
-  add(
-    'listing_present',
-    titleQuote.length >= 12
-      ? titleQuote
-      : (excerpts.find((text) => text.includes(title)) ?? titleQuote),
+  add('listing_present', titleQuote)
+  const descriptionIndex = lines.findIndex((line) =>
+    /^(?:(?:full )?job description|about the role|responsibilities)$/i.test(clean(line)),
   )
+  if (descriptionIndex >= 0) {
+    const description = lines
+      .slice(descriptionIndex + 1)
+      .find((line) => line.length >= 60 && line.length <= 1000)
+    if (description) add('listing_details', description)
+  }
   for (const excerpt of excerpts) {
     const text = clean(excerpt)
     if (

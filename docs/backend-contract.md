@@ -6,7 +6,17 @@ Install with `npm ci`. Copy `.env.example` to `.env` if it does not exist, add `
 
 For a built app, run `npm run build` followed by `npm start`; Node serves the frontend, byte-range video, and API on port 3001. `PORT`, `HOST`, `PUBLIC_ORIGIN`, `DATA_DIR` and `TINYFISH_RUNS_PER_HOUR` are configurable. The Vite development proxy targets port 3001; update `vite.config.ts` if changing that port during development.
 
-The active scan uses **TinyFish Fetch**. One uncached scan fetches one public job page and applies local English text rules. It starts no Agent run and requires no other LLM key. Fetch allowances are account-dependent; check the current TinyFish dashboard. Search and Agent client code is retained but not called by the production scan pipeline.
+The active scan starts with **TinyFish Fetch** and applies local English text rules. If a Naukri or Indeed description is unreadable, it uses **TinyFish Browser** for read-only client rendering. Known job IDs can then use **TinyFish Search** to locate the exact same posting. It starts no Agent run and requires no other LLM key. Allowances and Browser charges are account-dependent; check the current TinyFish dashboard.
+
+### Supported pasted links
+
+- LinkedIn `/jobs/view/ID` or search-result links containing `currentJobId`: resolve to the selected job, dropping filters and tracking.
+- Naukri `/job-listings-...-ID`: preserve the listing ID and remove tracking.
+- Indeed `jk` or `vjk`: resolve to `/viewjob?jk=ID`, including supported country domains. Actual access varies; the real Indeed tests below did not yield readable individual descriptions.
+- Workday `/job/` and `/details/`: preserve the requisition and tenant; exclude search results preceding the selected description.
+- Other public employer and ATS job URLs continue through Fetch and the same evidence validation.
+
+Search pages without a selected ID return `SELECT_JOB`. Recovery reads at most two Search candidate URLs with the same platform and job ID (and the same Workday tenant). Returned redirects must retain that identity. Search snippets, unrelated vacancies and unreadable/error pages never produce a report. A failed recovery returns `LISTING_UNAVAILABLE`; it does not demand that users locate an employer careers page.
 
 ## Provider contract
 
@@ -14,6 +24,7 @@ Implemented against the official references:
 
 - [Fetch](https://docs.tinyfish.ai/fetch-api/reference): `POST https://api.fetch.tinyfish.ai`, `{urls, format:"markdown", links:true, ttl:0, per_url_timeout_ms:45000, purpose}`. The purpose explicitly describes the job-risk page-text report. HTTP failures, per-URL failures, application-error pages and non-job content are handled without inventing scores.
 - [Search](https://docs.tinyfish.ai/search-api/reference): `GET https://api.search.tinyfish.ai?query=...&location=IN&language=en`. Results are candidate URLs only; snippets do not become scoring evidence.
+- [Browser](https://docs.tinyfish.ai/browser-api/reference): `POST https://api.browser.tinyfish.ai` with `{url, timeout_seconds:60}`, then `playwright-core` connects to the returned CDP endpoint. Read visible page text, headings and links only; no local browser installation is needed. `DELETE /:session_id` runs in cleanup on success or failure, with one termination retry. No persistent login profile, form submission or access-check interaction is used.
 - [Agent](https://docs.tinyfish.ai/agent-api/reference): `POST https://agent.tinyfish.ai/v1/automation/run-async`, with a natural-language read-only goal, a supported `output_schema`, `browser_profile:"lite"`, and a 180-second provider duration limit. No profile or vault credentials are enabled. Beta-gated max_steps, strict mode and capture settings are intentionally omitted.
 - [Runs](https://docs.tinyfish.ai/key-concepts/runs): poll `GET /v1/runs/:id`; validate the completed result, not just the COMPLETED status. An interrupted/timed-out run is cancelled with `POST /v1/runs/:id/cancel` when its ID is known. Run creation is not automatically retried because an ambiguous timeout may already have started billable work.
 
@@ -29,7 +40,7 @@ All provider calls use a server-side `X-API-Key` header. Provider response bodie
 
 The frontend polls every two seconds. Failures show actionable messages for missing configuration, authentication, exhausted credits, rate limits, blocked/login-only sources, malformed results and timeouts. No fixture fallback exists in the live request path. Scores remain unassessed when no readable specific posting can be established.
 
-The scanner now labels its scope as a TinyFish Fetch page-text check. The old `probe` flag is accepted for API compatibility, but never starts an Agent run; if true, the report explicitly states that application-flow inspection is unavailable. `coverage.applyFlow` is false. No form is filled or submitted. Screenshots and recordings are not exposed by the scan. `analysisMethod` is `fetch-rules`; `providerRunId` is absent.
+The scanner labels its scope as a TinyFish Fetch or Browser page-text check. The old `probe` flag is accepted for API compatibility, but never starts an Agent run; if true, the report explicitly states that application-flow inspection is unavailable. `coverage.applyFlow` is false. No form is filled or submitted. Screenshots and recordings are not exposed by the scan. `analysisMethod` is `fetch-rules` or `browser-rules`; `providerRunId` is absent. `resolution` contains platform, submitted URL, resolved URL, job ID and method (`direct`, `cloud-render`, `exact-id-search`).
 
 ## Evidence and scoring
 
@@ -66,7 +77,7 @@ The browser watchlist stores saved live reports (including original check time, 
 
 ## Limits and deployment
 
-The local API binds to loopback by default. It limits analysis starts to five per minute per socket IP, two concurrent runs, 200 in-memory tasks and 1,000 browser sessions. Provider budgets are 25 Fetch calls/minute, five Search calls/minute, and 20 Agent runs/hour by default. Account limits may be lower. Responses are bounded, JSON request bodies are capped, unsafe schemes/credentials/custom ports/private and reserved DNS addresses are rejected. Fetch's redirect protection is provider-enforced; returned final URLs are also checked.
+The local API binds to loopback by default. It limits analysis starts to five per minute per socket IP, two concurrent runs, 200 in-memory tasks and 1,000 client sessions. Provider budgets are 25 Fetch calls/minute, five Search calls/minute, 20 Browser starts/hour, and 20 legacy Agent runs/hour by default. Account limits may be lower. Responses are bounded, JSON request bodies are capped, unsafe schemes/credentials/custom ports/private and reserved DNS addresses are rejected. Fetch's redirect protection and cloud browser network isolation are provider-enforced; returned final URLs are also checked.
 
 Same-origin/session checks are not user authentication. Before exposing the service publicly, add account authentication and per-user spending quotas. Rate limits, sessions and tasks currently live in one process. For multi-instance Cloud Run use a durable queue/worker, shared rate limiting, a shared database/object store, and Secret Manager. The included Node container is ready for single-instance testing, not a claim of a fully scalable production deployment. Mounted DATA_DIR must be writable by the container's node user.
 
@@ -87,4 +98,6 @@ Successful authenticated browser scans after this change:
 
 `npm run test:live` verifies API completion, numeric totals, source links, all excerpts against independently re-fetched TinyFish page text, and cache persistence. Both reports and all eight excerpts passed on 2026-10-15. The initial browser requests were uncached; later audit requests reused those reports and fetched fresh source content for verification. `.qa/live-smoke-results.json` records check and verification times. This is integration verification, not precision/recall or probability calibration.
 
-The user-supplied Naukri posting ending `200520500046` returned only “Application error: a client-side exception has occurred” through TinyFish Fetch. That is not a readable job description. It receives a specific `SOURCE_PAGE_ERROR` and no scores; use a public employer link if that site remains unavailable.
+The user-supplied Naukri posting ending `200520500046` returned an application error through TinyFish Fetch. On 2026-10-16, the supported Browser fallback successfully rendered its actual Fresher description from Unifybrains Infotech. The app displayed both indices and expandable source excerpts. LinkedIn `currentJobId=4479816430` and Workday requisition `JR-0109923` also produced reports in the app. Their original failures were URL-selection/description-parsing issues, distinct from the earlier Agent policy rejection.
+
+Three real Indeed IDs (`34797a0025b9529d`, `01e26c3f29de67ae`, `183731e015d806d3`) returned unreadable individual pages through Fetch. Browser attempts for the first two and exact-ID recovery for the second also did not establish readable descriptions. The second was tested through the app and correctly left both scores unassessed. No successful Indeed scan is claimed. LinkedIn and Naukri availability also varied between requests; final independent quote verification succeeded for all three user-supplied listings. Cached reports retain their original check time and show that they are cached. See [the full verification matrix](live-verification.md).

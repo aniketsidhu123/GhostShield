@@ -21,6 +21,28 @@ export async function readCloudPage(url: string, key: string, signal?: AbortSign
   })
   if (!sessionResponse.ok) {
     await sessionResponse.body?.cancel()
+    const accountErrors: Record<number, [string, string]> = {
+      401: [
+        'PROVIDER_AUTH',
+        'TinyFish Browser rejected the API key. Check the server configuration.',
+      ],
+      402: [
+        'PROVIDER_CREDITS',
+        'TinyFish Browser credits or allowance are exhausted. Check the TinyFish dashboard.',
+      ],
+      403: [
+        'PROVIDER_ACCESS',
+        'TinyFish denied cloud-browser access. Check the account’s Browser API permissions.',
+      ],
+      429: ['PROVIDER_RATE_LIMIT', 'TinyFish Browser is rate limited. Please retry later.'],
+    }
+    const accountError = accountErrors[sessionResponse.status]
+    if (accountError)
+      throw new AppError(
+        accountError[0],
+        accountError[1],
+        sessionResponse.status === 429 ? 429 : 502,
+      )
     throw new AppError(
       'BROWSER_UNAVAILABLE',
       `TinyFish cloud rendering is unavailable for this request (HTTP ${sessionResponse.status}).`,
@@ -45,7 +67,7 @@ export async function readCloudPage(url: string, key: string, signal?: AbortSign
     await tab.waitForLoadState('domcontentloaded', { timeout: 25000 })
     // Allow ordinary client rendering to complete; never interact with sign-in or CAPTCHA controls.
     await tab
-      .waitForFunction(() => document.body?.innerText.length > 500, { timeout: 15000 })
+      .waitForFunction(() => document.body?.innerText.length > 500, undefined, { timeout: 15000 })
       .catch(() => {})
     signal?.throwIfAborted()
     const final = await assertPublicUrl(tab.url())

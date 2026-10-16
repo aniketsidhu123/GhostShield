@@ -17,6 +17,12 @@ export function scopeListing(page: Page): Page {
           .toLowerCase() === page.title.toLowerCase(),
     )
     if (index >= 0) page = { ...page, text: lines.slice(index).join('\n') }
+    else if (/\b\d+\s+JOBS FOUND\b|Search for Jobs page is loaded/i.test(page.text))
+      throw new AppError(
+        'NOT_A_READABLE_JOB',
+        'Workday returned search results without the selected role description.',
+        422,
+      )
   }
   const boundaries =
     platform === 'LinkedIn'
@@ -95,8 +101,13 @@ export async function resolveListing(
             jobId: identity.jobId,
           },
         }
-      } catch {
+      } catch (browserError) {
         signal.throwIfAborted()
+        if (
+          browserError instanceof AppError &&
+          (browserError.code.startsWith('PROVIDER_') || browserError.code === 'RATE_LIMIT')
+        )
+          throw browserError
       }
     }
     stage(`Finding the same ${identity.platform} listing by its job ID…`)

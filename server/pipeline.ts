@@ -26,7 +26,7 @@ export async function analyze(
   stage('Extracting quoted observations from the fetched job page…')
   if (probe)
     limitations.push(
-      'Application-flow inspection is unavailable in Fetch mode. This report covers the fetched listing text only.',
+      'Application-flow inspection is unavailable in page-text mode. This report covers the public listing text only.',
     )
   const pages = [primary]
   stage('Calculating independent signal scores…')
