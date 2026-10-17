@@ -206,7 +206,7 @@ export class BrightData {
         .replace(
           /\.\d{3}Z$/,
           ' UTC',
-        )}. No new collection was started and no scores were generated.`,
+        )}. No duplicate collection was started and no scores were generated.`,
       429,
       new Date(until).toISOString(),
     )

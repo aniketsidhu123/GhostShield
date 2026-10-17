@@ -22,14 +22,23 @@ import { CinematicExperience } from './components/CinematicExperience'
 import { RiskDial } from './components/RiskDial'
 import { SignalTimeline } from './components/SignalTimeline'
 import { Modal } from './components/Modal'
+import { DescriptionFallback } from './components/DescriptionFallback'
 import { mockAnalyses } from './data/mockAnalysis'
 import { emptyAnalysis } from './data/emptyAnalysis'
-import { inspectJob } from './lib/api'
+import { inspectJob, inspectDescription } from './lib/api'
 import { readWatchlist, writeWatchlist } from './lib/analysis'
 import type { JobAnalysis, SavedListing, Scenario } from './types/analysis'
 
 type Dialog =
-  'report' | 'watchlist' | 'methodology' | 'privacy' | 'evidence' | 'probe' | 'help' | null
+  | 'report'
+  | 'watchlist'
+  | 'methodology'
+  | 'privacy'
+  | 'evidence'
+  | 'probe'
+  | 'help'
+  | 'description'
+  | null
 
 function App() {
   const [scenario, setScenario] = useState<Scenario>('ghost')
@@ -45,6 +54,8 @@ function App() {
   const requestController = useRef<AbortController | null>(null)
   const analysis = report ?? emptyAnalysis
   const isLive = analysis.mode === 'live'
+  const isProvided = analysis.mode === 'user-provided'
+  const isSample = analysis.mode === 'demo'
   const saved = watchlist.some((item) => item.id === analysis.id)
 
   useEffect(
@@ -104,7 +115,7 @@ function App() {
             employer: analysis.job.employer,
             savedAt: new Date().toISOString(),
             mode: analysis.mode,
-            ...(isLive ? { report: analysis } : {}),
+            ...(!isSample ? { report: analysis } : {}),
           },
         ]
     setWatchlist(next)
@@ -134,6 +145,24 @@ function App() {
     setDialog('report')
   }
 
+  async function inspectText(description: string) {
+    if (busy) return
+    setBusy(true)
+    const controller = new AbortController()
+    requestController.current = controller
+    try {
+      const result = await inspectDescription(description, requestedUrl, controller.signal)
+      if (controller.signal.aborted) return
+      setReport(result)
+      setRequestedUrl(result.requestedUrl)
+      setScenario(result.scenario)
+      setScanError('')
+      setDialog('report')
+    } finally {
+      if (!controller.signal.aborted) setBusy(false)
+    }
+  }
+
   return (
     <SmoothScroll paused={dialog !== null}>
       <div className="film-app">
@@ -145,6 +174,7 @@ function App() {
           suspended={dialog !== null}
           watchlistCount={watchlist.length}
           onInspect={inspect}
+          onPasteDescription={() => setDialog('description')}
           onSample={(next) => {
             if (busy) return
             setScanError('')
@@ -180,20 +210,30 @@ function App() {
               <Sparkles size={18} />
               <div>
                 <strong>
-                  {isLive
-                    ? `${analysis.analysisMethod === 'bright-data-rules' ? 'Bright Data · Indeed fallback' : analysis.analysisMethod === 'fetch-rules' ? 'TinyFish Fetch · page-text check' : analysis.analysisMethod === 'browser-rules' ? 'TinyFish Browser · page-text check' : 'TinyFish evidence check'}${analysis.cached ? ' · cached within the last hour' : ''}`
-                    : 'Sample report — no live scan performed'}
+                  {isProvided
+                    ? 'User-provided text · unverified'
+                    : isLive
+                      ? `${analysis.analysisMethod === 'bright-data-rules' ? 'Bright Data · Indeed fallback' : analysis.analysisMethod === 'fetch-rules' ? 'TinyFish Fetch · page-text check' : analysis.analysisMethod === 'browser-rules' ? 'TinyFish Browser · page-text check' : 'TinyFish evidence check'}${analysis.cached ? ' · cached within the last hour' : ''}`
+                      : 'Sample report — no live scan performed'}
                 </strong>
                 <p>
-                  {isLive
-                    ? `Checked ${new Date(analysis.checkedAt).toLocaleString('en-IN')}. Scores reflect the cited observations and coverage below.`
-                    : 'Explore a fictional listing to see how separate ghost and scam signals work.'}
+                  {isProvided
+                    ? `Analysed ${new Date(analysis.checkedAt).toLocaleString('en-IN')}. No website was read. Scores and quotes refer only to your pasted text; the original listing and employer are unverified.`
+                    : isLive
+                      ? `Checked ${new Date(analysis.checkedAt).toLocaleString('en-IN')}. Scores reflect the cited observations and coverage below.`
+                      : 'Explore a fictional listing to see how separate ghost and scam signals work.'}
                 </p>
               </div>
             </div>
             {requestedUrl && (
               <div className="requested-url">
-                <span>{isLive ? 'SUBMITTED LINK' : 'SAMPLE LINK'}</span>
+                <span>
+                  {isProvided
+                    ? 'ORIGINAL LINK · NOT VERIFIED · REFERENCE ONLY'
+                    : isLive
+                      ? 'SUBMITTED LINK'
+                      : 'SAMPLE LINK'}
+                </span>
                 <p>{requestedUrl}</p>
               </div>
             )}
@@ -224,7 +264,7 @@ function App() {
                 </p>
               </div>
             )}
-            {!isLive && (
+            {isSample && (
               <div className="sample-tabs" role="group" aria-label="Choose sample scenario">
                 {(
                   [
@@ -250,7 +290,11 @@ function App() {
             )}
             <div className="report-job">
               <span className="eyebrow">
-                {isLive ? 'LIVE SOURCE OBSERVATIONS' : 'FICTIONAL SAMPLE'}
+                {isProvided
+                  ? 'USER-PROVIDED TEXT · UNVERIFIED'
+                  : isLive
+                    ? 'LIVE SOURCE OBSERVATIONS'
+                    : 'FICTIONAL SAMPLE'}
               </span>
               <h3>{analysis.job.title}</h3>
               <p>
@@ -271,11 +315,11 @@ function App() {
             <div className="report-coverage">
               <span>
                 {analysis.coverage.careerPage ? <Check size={13} /> : <X size={13} />}{' '}
-                {isLive ? 'Careers-page match' : 'Careers-page sample'}
+                {isSample ? 'Careers-page sample' : 'Careers-page match'}
               </span>
               <span>
                 {analysis.coverage.history ? <Check size={13} /> : <X size={13} />}{' '}
-                {isLive ? 'Multiple snapshot dates' : 'Seeded history'}
+                {isSample ? 'Seeded history' : 'Multiple snapshot dates'}
               </span>
               <span>
                 {analysis.coverage.applyFlow ? <Check size={13} /> : <X size={13} />} Apply flow{' '}
@@ -288,7 +332,7 @@ function App() {
             </p>
             <h3 className="modal-subheading">Signals observed</h3>
             <SignalTimeline key={analysis.id} analysis={analysis} />
-            {isLive && (
+            {!isSample && (
               <>
                 <h3 className="modal-subheading">Coverage and limitations</h3>
                 <ul className="analysis-limitations">
@@ -296,7 +340,15 @@ function App() {
                     <li key={index}>{item}</li>
                   ))}
                 </ul>
-                <h3 className="modal-subheading">Sources fetched</h3>
+                <h3 className="modal-subheading">
+                  {isProvided ? 'Evidence origin' : 'Sources fetched'}
+                </h3>
+                {isProvided && (
+                  <p className="modal-body-copy">
+                    All quotes come from user-provided, unverified text. No external sources were
+                    fetched and no website snapshots were saved.
+                  </p>
+                )}
                 <ul className="analysis-sources">
                   {analysis.sources?.map((source) => (
                     <li key={source.url}>
@@ -307,10 +359,12 @@ function App() {
                     </li>
                   ))}
                 </ul>
-                <p className="modal-fineprint">
-                  {analysis.history?.length ?? 0} dated snapshot(s) saved ·{' '}
-                  {analysis.scoringVersion}. Screenshots are not captured by this integration.
-                </p>
+                {!isProvided && (
+                  <p className="modal-fineprint">
+                    {analysis.history?.length ?? 0} dated snapshot(s) saved ·{' '}
+                    {analysis.scoringVersion}. Screenshots are not captured by this integration.
+                  </p>
+                )}
               </>
             )}
             {toast && (
@@ -327,6 +381,20 @@ function App() {
                 How scoring works <ArrowUpRight size={14} />
               </button>
             </div>
+          </Modal>
+        )}
+
+        {dialog === 'description' && (
+          <Modal
+            title="Analyse the description you have."
+            onClose={() => {
+              requestController.current?.abort()
+              setBusy(false)
+              setDialog(null)
+            }}
+            wide
+          >
+            <DescriptionFallback busy={busy} onAnalyze={inspectText} />
           </Modal>
         )}
 
@@ -357,7 +425,7 @@ function App() {
                     <button
                       onClick={() => {
                         setScenario(item.scenario)
-                        setReport(item.mode === 'live' ? item.report! : mockAnalyses[item.scenario])
+                        setReport(item.mode !== 'demo' ? item.report! : mockAnalyses[item.scenario])
                         setRequestedUrl(item.report?.requestedUrl ?? null)
                         setDialog('report')
                       }}
@@ -365,7 +433,11 @@ function App() {
                       <strong>{item.title}</strong>
                       <span>
                         {item.employer} ·{' '}
-                        {item.mode === 'live' ? 'Saved live check' : 'Sample data'}
+                        {item.mode === 'user-provided'
+                          ? 'User-provided · unverified'
+                          : item.mode === 'live'
+                            ? 'Saved live check'
+                            : 'Sample data'}
                       </span>
                     </button>
                     <button
@@ -430,10 +502,10 @@ function App() {
             <div className="method-note">
               <CircleHelp size={19} />
               <p>
-                These weights have not been calibrated against a labelled dataset. Live observations
-                are extracted from retrieved listing content using local text rules, with quotes
-                checked against that content. Scores do not establish intent or fraud. Confidence
-                describes coverage separately from the score.
+                These weights have not been calibrated against a labelled dataset. Observations are
+                extracted using local text rules. Live reports quote retrieved content;
+                user-provided reports quote pasted text without verifying its source. Scores do not
+                establish intent or fraud. Confidence describes coverage separately from the score.
               </p>
             </div>
             <h3 className="modal-subheading">What a live check needs</h3>
@@ -461,7 +533,9 @@ function App() {
                   Scanning sends the public URL to our API and TinyFish for reading and inspection.
                   If TinyFish cannot read an Indeed listing, its URL may also be sent to Bright
                   Data. The server caches reports and dated content hashes. Avoid links containing
-                  private access tokens or personal information.
+                  private access tokens or personal information. Pasted-description analysis sends
+                  text only to this app’s backend, without calling a retrieval provider or saving
+                  the description on the server.
                 </p>
               </div>
               <div>
@@ -493,11 +567,17 @@ function App() {
             onClose={() => setDialog(null)}
           >
             <p className="modal-intro">
-              {isLive ? 'Live source observations' : 'Fictional sample'}: {analysis.job.title} at{' '}
-              {analysis.job.employer}.{' '}
-              {isLive
-                ? 'Review the supporting sources and check time.'
-                : 'These signals belong to a demo.'}
+              {isProvided
+                ? 'User-provided text · unverified'
+                : isLive
+                  ? 'Live source observations'
+                  : 'Fictional sample'}
+              : {analysis.job.title} at {analysis.job.employer}.{' '}
+              {isProvided
+                ? 'Quotes refer only to your pasted text. The original source was not verified.'
+                : isLive
+                  ? 'Review the supporting sources and check time.'
+                  : 'These signals belong to a demo.'}
             </p>
             <div className="evidence-dialog-dial">
               <RiskDial kind={scoreKind} score={analysis[scoreKind]} />

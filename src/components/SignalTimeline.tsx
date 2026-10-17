@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowUpRight, ChevronDown, Check, Ghost, ShieldAlert } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, Check, Ghost, ShieldAlert, FileText } from 'lucide-react'
 import type { JobAnalysisProps } from '../types/analysis'
 
 export function SignalTimeline({ analysis }: JobAnalysisProps) {
@@ -7,7 +7,14 @@ export function SignalTimeline({ analysis }: JobAnalysisProps) {
   return (
     <div className="signal-timeline">
       {analysis.signals.map((signal, index) => {
-        const Icon = signal.kind === 'ghost' ? Ghost : signal.kind === 'scam' ? ShieldAlert : Check
+        const Icon =
+          signal.kind === 'ghost'
+            ? Ghost
+            : signal.kind === 'scam'
+              ? ShieldAlert
+              : analysis.mode === 'user-provided'
+                ? FileText
+                : Check
         const open = openId === signal.id
         return (
           <article
@@ -42,7 +49,14 @@ export function SignalTimeline({ analysis }: JobAnalysisProps) {
             </button>
             <div id={`signal-${signal.id}`} hidden={!open} className="signal-details">
               <p>{signal.description}</p>
-              {signal.quote && <blockquote className="evidence-quote">“{signal.quote}”</blockquote>}
+              {signal.quote && (
+                <>
+                  {analysis.mode === 'user-provided' && (
+                    <p className="modal-fineprint">Quote from user-provided text · unverified</p>
+                  )}
+                  <blockquote className="evidence-quote">“{signal.quote}”</blockquote>
+                </>
+              )}
               <div className="signal-weight">
                 {signal.weight > 0
                   ? `+${signal.weight} ${signal.kind} signal points`

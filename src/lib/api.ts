@@ -1,4 +1,4 @@
-import { jobStatusSchema } from './api-schema'
+import { jobStatusSchema, descriptionAnalysisSchema, liveAnalysisSchema } from './api-schema'
 import type { JobAnalysis } from '../types/analysis'
 
 async function request(path: string, signal: AbortSignal, body?: unknown) {
@@ -45,7 +45,7 @@ export async function inspectJob(
     onProgress(task.stage)
     if (task.status === 'completed') {
       if (!task.report) throw new Error('The completed check contained no validated report.')
-      return task.report
+      return liveAnalysisSchema.parse(task.report)
     }
     if (task.status === 'failed')
       throw new Error(task.error?.message ?? 'The check failed. No scores were generated.')
@@ -67,4 +67,16 @@ export async function inspectJob(
     })
     task = await request(`/api/analyses/${encodeURIComponent(task.id)}`, signal)
   }
+}
+
+export async function inspectDescription(
+  description: string,
+  url: string | null,
+  signal: AbortSignal,
+): Promise<JobAnalysis> {
+  const task = await request('/api/description-analyses', signal, {
+    description,
+    ...(url ? { url } : {}),
+  })
+  return descriptionAnalysisSchema.parse(task.report)
 }

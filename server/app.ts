@@ -11,6 +11,7 @@ import type { BrightData } from './bright-data'
 import { Store } from './store'
 import { analyze, cacheKey } from './pipeline'
 import type { AnalysisTask } from '../src/lib/api-schema'
+import { analyzeDescription } from './description-analysis'
 
 type Task = AnalysisTask & { owners: Set<string>; createdAt: number }
 interface Options {
@@ -80,7 +81,11 @@ export function createApp(options: Options) {
       }
       if (path.startsWith('/api/')) {
         const owner = session(req, res)
-        if (path === '/api/analyses' && req.method === 'POST') {
+        if (
+          ['/api/analyses', '/api/description-analyses'].includes(path) &&
+          req.method === 'POST'
+        ) {
+          const textOnly = path === '/api/description-analyses'
           if (!req.headers.origin || !allowed.has(req.headers.origin))
             throw new AppError(
               'ORIGIN_DENIED',
@@ -105,7 +110,7 @@ export function createApp(options: Options) {
           let body = ''
           for await (const chunk of req) {
             body += chunk.toString()
-            if (Buffer.byteLength(body) > 4096)
+            if (Buffer.byteLength(body) > (textOnly ? 200000 : 4096))
               throw new AppError('BODY_TOO_LARGE', 'The request is too large.', 413)
           }
           let decoded: unknown
@@ -113,6 +118,16 @@ export function createApp(options: Options) {
             decoded = JSON.parse(body)
           } catch {
             throw new AppError('INVALID_BODY', 'The request is not valid JSON.', 400)
+          }
+          if (textOnly) {
+            const report = analyzeDescription(decoded)
+            json(res, 200, {
+              id: report.id,
+              status: 'completed',
+              stage: 'User-provided text analysed; source unverified.',
+              report,
+            })
+            return
           }
           const parsed = z
             .object({ url: z.string().max(2048), probe: z.boolean().default(false) })

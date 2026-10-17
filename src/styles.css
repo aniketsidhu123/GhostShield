@@ -3071,6 +3071,54 @@ button {
     opacity: 0.2;
   }
 }
+.description-fallback {
+  display: grid;
+  gap: 14px;
+}
+.description-fallback label {
+  color: #d7f5f6;
+  font-weight: 600;
+}
+.description-fallback > p {
+  margin: 0;
+  line-height: 1.65;
+  color: #a5bdc9;
+}
+.description-fallback textarea {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  padding: 16px;
+  color: #e7f5f8;
+  background: #07121d;
+  border: 1px solid #405d6c;
+  border-radius: 10px;
+  font: inherit;
+  line-height: 1.65;
+}
+.description-fallback textarea:focus-visible {
+  outline: 2px solid #79eff0;
+  outline-offset: 3px;
+}
+.description-fallback small {
+  color: #9cb6c3;
+}
+.description-fallback .description-error {
+  color: #ffb895;
+}
+.description-fallback .button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.unverified-banner {
+  border-color: #b38b58;
+}
+.film-error > p {
+  margin: 0 0 12px;
+}
+.film-error .button {
+  padding: 9px 14px;
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *:before,

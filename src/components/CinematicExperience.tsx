@@ -31,6 +31,7 @@ interface Props {
   suspended: boolean
   watchlistCount: number
   onInspect: (url: string, probe: boolean) => void
+  onPasteDescription: () => void
   onSample: (scenario: Scenario) => void
   onScore: (kind: 'ghost' | 'scam') => void
   onProbe: () => void
@@ -52,6 +53,7 @@ export function CinematicExperience({
   suspended,
   watchlistCount,
   onInspect,
+  onPasteDescription,
   onSample,
   onScore,
   onProbe,
@@ -256,7 +258,7 @@ export function CinematicExperience({
           >
             <h2 className="sr-only">Unmask ghosts and scams. Inspect a job listing.</h2>
             <button
-              className={`film-hotspot dial-hotspot ghost ${analysis.mode === 'live' && analysis.ghost.value !== null ? 'live-score' : ''}`}
+              className={`film-hotspot dial-hotspot ghost ${analysis.mode !== 'demo' && analysis.ghost.value !== null ? 'live-score' : ''}`}
               style={rectStyle(trackedRect(tracking.ghostDial, frameTime))}
               onClick={() => onScore('ghost')}
               aria-label={`Ghost likelihood: ${analysis.ghost.value ?? 'not checked'}${analysis.ghost.value === null ? '' : ' out of 100'}. Open signals and explanation.`}
@@ -266,7 +268,14 @@ export function CinematicExperience({
                   {analysis.ghost.value ?? '—'}
                   <small>/100</small>
                 </strong>
-                <span>GHOST LIKELIHOOD · {analysis.mode === 'demo' ? 'SAMPLE' : 'SIGNALS'}</span>
+                <span>
+                  GHOST LIKELIHOOD ·{' '}
+                  {analysis.mode === 'user-provided'
+                    ? 'UNVERIFIED'
+                    : analysis.mode === 'demo'
+                      ? 'SAMPLE'
+                      : 'SIGNALS'}
+                </span>
               </span>
               <span className="hotspot-label">
                 View ghost signals <ArrowRight size={12} />
@@ -281,7 +290,7 @@ export function CinematicExperience({
               {field('film-url')}
             </form>
             <button
-              className={`film-hotspot dial-hotspot scam ${analysis.mode === 'live' && analysis.scam.value !== null ? 'live-score' : ''}`}
+              className={`film-hotspot dial-hotspot scam ${analysis.mode !== 'demo' && analysis.scam.value !== null ? 'live-score' : ''}`}
               style={rectStyle(trackedRect(tracking.scamDial, frameTime))}
               onClick={() => onScore('scam')}
               aria-label={`Scam risk: ${analysis.scam.value ?? 'not checked'}${analysis.scam.value === null ? '' : ' out of 100'}. Open signals and explanation.`}
@@ -291,14 +300,23 @@ export function CinematicExperience({
                   {analysis.scam.value ?? '—'}
                   <small>/100</small>
                 </strong>
-                <span>SCAM RISK · {analysis.mode === 'demo' ? 'SAMPLE' : 'SIGNALS'}</span>
+                <span>
+                  SCAM RISK ·{' '}
+                  {analysis.mode === 'user-provided'
+                    ? 'UNVERIFIED'
+                    : analysis.mode === 'demo'
+                      ? 'SAMPLE'
+                      : 'SIGNALS'}
+                </span>
               </span>
               <span className="hotspot-label">
                 View scam signals <ArrowRight size={12} />
               </span>
             </button>
             <p className="film-demo-note" id="film-input-description">
-              Live source checks · evidence-based signal indices
+              {analysis.mode === 'user-provided'
+                ? 'User-provided text · unverified signal indices'
+                : 'Live source checks · evidence-based signal indices'}
             </p>
           </div>
         </div>
@@ -357,7 +375,11 @@ export function CinematicExperience({
                 <ShieldAlert size={15} /> Scam risk <b>{analysis.scam.value ?? '—'}</b>
               </button>
             </div>
-            <span className="mobile-demo-note">Live source checks · sources included</span>
+            <span className="mobile-demo-note">
+              {analysis.mode === 'user-provided'
+                ? 'User-provided text · unverified'
+                : 'Live source checks · sources included'}
+            </span>
           </>
         ) : phase === 'listings' ? (
           <>
@@ -407,9 +429,14 @@ export function CinematicExperience({
         </div>
       )}
       {(error || scanError) && (
-        <p id="film-input-error" className="film-error" role="alert">
-          {error || scanError}
-        </p>
+        <div id="film-input-error" className="film-error">
+          <p role="alert">{error || scanError}</p>
+          {scanError && !busy && (
+            <button className="button button-outline" onClick={onPasteDescription}>
+              Paste job description instead
+            </button>
+          )}
+        </div>
       )}
 
       <footer className="film-controls">

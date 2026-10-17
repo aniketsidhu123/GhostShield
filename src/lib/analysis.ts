@@ -1,5 +1,5 @@
 import type { JobAnalysis, SavedListing } from '../types/analysis'
-import { liveAnalysisSchema } from './api-schema'
+import { savedAnalysisSchema } from './api-schema'
 
 export function normalizeJobUrl(value: string): string {
   const trimmed = value.trim()
@@ -63,8 +63,9 @@ export function readWatchlist(): SavedListing[] {
         typeof item.savedAt === 'string' &&
         !Number.isNaN(Date.parse(item.savedAt)) &&
         ['ghost', 'scam', 'active'].includes(item.scenario) &&
-        ['demo', 'live'].includes(item.mode) &&
-        (item.mode === 'demo' || liveAnalysisSchema.safeParse(item.report).success),
+        ['demo', 'live', 'user-provided'].includes(item.mode) &&
+        (item.mode === 'demo' ||
+          (savedAnalysisSchema.safeParse(item.report).success && item.mode === item.report.mode)),
     )
   } catch {
     return []

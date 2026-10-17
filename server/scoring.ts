@@ -135,6 +135,7 @@ export function buildReport(input: {
   probe: boolean
   runId?: string
   limitations: string[]
+  sourceType?: 'user-provided'
 }): JobAnalysis {
   const { extraction, primary, history } = input
   if (
@@ -157,7 +158,10 @@ export function buildReport(input: {
   for (const observation of extraction.observations) {
     let url: string
     try {
-      url = canonicalUrl(observation.sourceUrl)
+      url =
+        input.sourceType === 'user-provided' && observation.sourceUrl === primary.url
+          ? primary.url
+          : canonicalUrl(observation.sourceUrl)
     } catch {
       continue
     }

@@ -16,7 +16,7 @@ const score = z.object({
 })
 export const analysisSchema = z.object({
   id: z.string().max(100),
-  mode: z.enum(['demo', 'live']),
+  mode: z.enum(['demo', 'live', 'user-provided']),
   scenario: z.enum(['ghost', 'scam', 'active']),
   requestedUrl: httpUrl.nullable(),
   analyzedUrl: httpUrl.nullable(),
@@ -71,7 +71,9 @@ export const analysisSchema = z.object({
   cached: z.boolean().optional(),
   scoringVersion: z.string().optional(),
   providerRunId: z.string().optional(),
-  analysisMethod: z.enum(['agent', 'fetch-rules', 'browser-rules', 'bright-data-rules']).optional(),
+  analysisMethod: z
+    .enum(['agent', 'fetch-rules', 'browser-rules', 'bright-data-rules', 'text-rules'])
+    .optional(),
   resolution: z
     .object({
       platform: z.string().max(100),
@@ -83,14 +85,42 @@ export const analysisSchema = z.object({
     .optional(),
 })
 export const liveAnalysisSchema = analysisSchema.refine(
-  (report) => report.mode === 'live' && !!report.analyzedUrl && !!report.requestedUrl,
+  (report) =>
+    report.mode === 'live' &&
+    report.analysisMethod !== 'text-rules' &&
+    !!report.analyzedUrl &&
+    !!report.requestedUrl,
   'Expected a live report',
 )
+export const descriptionInputSchema = z
+  .object({
+    description: z.string().trim().min(240).max(30000),
+    url: httpUrl.optional(),
+  })
+  .strict()
+export const descriptionAnalysisSchema = analysisSchema.refine(
+  (report) =>
+    report.mode === 'user-provided' &&
+    report.analysisMethod === 'text-rules' &&
+    report.analyzedUrl === null &&
+    !report.resolution &&
+    !report.providerRunId &&
+    !report.coverage.careerPage &&
+    !report.coverage.history &&
+    !report.coverage.applyFlow &&
+    !report.sources?.length &&
+    !report.history?.length &&
+    report.signals.every(
+      (signal) => !signal.sourceUrl && signal.source === 'User-provided text · unverified',
+    ),
+  'Expected an unverified user-provided report without fetched-source claims',
+)
+export const savedAnalysisSchema = z.union([liveAnalysisSchema, descriptionAnalysisSchema])
 export const jobStatusSchema = z.object({
   id: z.string(),
   status: z.enum(['queued', 'running', 'completed', 'failed']),
   stage: z.string().max(500),
-  report: liveAnalysisSchema.optional(),
+  report: savedAnalysisSchema.optional(),
   error: z
     .object({ code: z.string(), message: z.string(), retryAt: z.string().datetime().optional() })
     .optional(),

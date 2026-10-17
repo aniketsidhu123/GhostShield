@@ -23,7 +23,7 @@ export interface RiskScore {
 
 export interface JobAnalysis {
   id: string
-  mode: 'demo' | 'live'
+  mode: 'demo' | 'live' | 'user-provided'
   scenario: Scenario
   requestedUrl: string | null
   analyzedUrl: string | null
@@ -40,7 +40,7 @@ export interface JobAnalysis {
   cached?: boolean
   scoringVersion?: string
   providerRunId?: string
-  analysisMethod?: 'agent' | 'fetch-rules' | 'browser-rules' | 'bright-data-rules'
+  analysisMethod?: 'agent' | 'fetch-rules' | 'browser-rules' | 'bright-data-rules' | 'text-rules'
   resolution?: {
     platform: string
     submittedUrl: string
@@ -60,6 +60,6 @@ export interface SavedListing {
   title: string
   employer: string
   savedAt: string
-  mode: 'demo' | 'live'
+  mode: 'demo' | 'live' | 'user-provided'
   report?: JobAnalysis
 }
